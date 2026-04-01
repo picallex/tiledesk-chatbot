@@ -75,7 +75,7 @@ class DirPicallexCallLead {
     }
 
     // Build request body
-    const leadId = filler.fill("{{lead.id}}", requestVariables);
+    const leadId = filler.fill("{{attributes.lead.id}}", requestVariables);
 
     let body = {
       leadId: leadId,
@@ -92,9 +92,12 @@ class DirPicallexCallLead {
       }
     }
 
-    // Optional: salesforce fields
+    // Optional: salesforce fields (nested inside context)
     if (action.salesforce && action.salesforce.length > 0) {
-      body.salesforce = action.salesforce.map(sf => ({
+      if (!body.context) {
+        body.context = {};
+      }
+      body.context.salesforce = action.salesforce.map(sf => ({
         object: filler.fill(sf.object, requestVariables),
         field: filler.fill(sf.field, requestVariables),
         name: filler.fill(sf.name, requestVariables)

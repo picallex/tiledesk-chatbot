@@ -59,6 +59,10 @@ const { DirWebResponse } = require('./directives/DirWebResponse');
 const { DirConnectBlock } = require('./directives/DirConnectBlock');
 const { DirAiCondition } = require('./directives/DirAiCondition');
 const { DirGptResponse } = require('./directives/DirGptResponse');
+const { DirPicallexSendTemplate } = require('./directives/DirPicallexSendTemplate');
+const { DirPicallexCallLead } = require('./directives/DirPicallexCallLead');
+const { DirPicallexSfActivity } = require('./directives/DirPicallexSfActivity');
+const { DirPicallexSfUpdateObject } = require('./directives/DirPicallexSfUpdateObject');
 
 const winston = require('../utils/winston');
 const { DirFlowLog } = require('./directives/DirFlowLog');
@@ -69,7 +73,7 @@ class DirectivesChatbotPlug {
   /**
    * @example
    * const { DirectivesChatbotPlug } = require('./DirectivesChatbotPlug');
-   * 
+   *
    */
 
   constructor(config) {
@@ -125,8 +129,8 @@ class DirectivesChatbotPlug {
       this.theend();
       return;
     }
-    
-    const supportRequest = this.supportRequest;    
+
+    const supportRequest = this.supportRequest;
     const token = this.token;
     const API_ENDPOINT = this.API_ENDPOINT;
     const TILEBOT_ENDPOINT = this.TILEBOT_ENDPOINT;
@@ -167,10 +171,10 @@ class DirectivesChatbotPlug {
       HELP_CENTER_API_ENDPOINT: this.HELP_CENTER_API_ENDPOINT
     }
     winston.debug("(DirectivesChatbotPlug) this.context.departmentId: " + this.context.departmentId);
-    
+
     this.curr_directive_index = -1;
     winston.verbose("(DirectivesChatbotPlug) processing directives...");
-    
+
     const next_dir = await this.nextDirective(directives);
     winston.debug("(DirectivesChatbotPlug) next_dir: ", next_dir);
     await this.process(next_dir);
@@ -295,7 +299,11 @@ class DirectivesChatbotPlug {
       [Directives.CONNECT_BLOCK]: DirConnectBlock,
       [Directives.ADD_TAGS]: DirAddTags,
       [Directives.WEB_RESPONSE]: DirWebResponse,
-      [Directives.FLOW_LOG]: DirFlowLog
+      [Directives.FLOW_LOG]: DirFlowLog,
+      [Directives.PICALLEX_SEND_TEMPLATE]: DirPicallexSendTemplate,
+      [Directives.PICALLEX_CALL_LEAD]: DirPicallexCallLead,
+      [Directives.PICALLEX_SF_ACTIVITY]: DirPicallexSfActivity,
+      [Directives.PICALLEX_SF_UPDATE_OBJECT]: DirPicallexSfUpdateObject,
     };
 
     const HandlerClass = handlers[directive_name];

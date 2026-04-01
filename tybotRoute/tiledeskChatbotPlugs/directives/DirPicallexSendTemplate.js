@@ -75,7 +75,7 @@ class DirPicallexSendTemplate {
     }
 
     // Build request body
-    const leadId = filler.fill("{{lead.id}}", requestVariables);
+    const leadId = filler.fill("{{attributes.lead.id}}", requestVariables);
     const templateId = filler.fill(action.templateId, requestVariables);
 
     if (!templateId) {
@@ -104,6 +104,9 @@ class DirPicallexSendTemplate {
       }
       if (action.nextStep.hour) {
         body.nextStep.hour = filler.fill(action.nextStep.hour, requestVariables);
+      }
+      if (action.nextStep.days !== undefined && action.nextStep.days !== null) {
+        body.nextStep.days = action.nextStep.days;
       }
     }
 
