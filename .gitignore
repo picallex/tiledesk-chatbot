@@ -108,3 +108,5 @@ dist
 ./tybotRoute/uploads/*
 
 deploy_chatbot.sh
+.DS_Store
+tybotRoute/.DS_Store
