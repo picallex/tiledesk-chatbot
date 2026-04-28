@@ -117,7 +117,7 @@ class DirPicallexSfActivity {
       }
 
       winston.debug("(DirPicallexSfActivity) response: ", res);
-      let resultData = res.data ? JSON.stringify(res.data) : "";
+      let resultData = res.data ? res.data : null;
       await this.#assignAttributes(action, res.status, null, resultData);
 
       if (trueIntent) {
