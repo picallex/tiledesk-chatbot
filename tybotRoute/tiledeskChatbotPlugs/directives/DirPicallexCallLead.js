@@ -132,6 +132,32 @@ class DirPicallexCallLead {
       });
     }
 
+    // Optional: salesforce.object (update / log)
+    const sfObjectInput = action.salesforceObject;
+    if (sfObjectInput && (sfObjectInput.update || sfObjectInput.log)) {
+      const sfObject = {};
+      if (sfObjectInput.update) {
+        sfObject.update = {
+          objectType: filler.fill(sfObjectInput.update.objectType, requestVariables),
+          params: {}
+        };
+        if (sfObjectInput.update.params) {
+          for (const [key, value] of Object.entries(sfObjectInput.update.params)) {
+            sfObject.update.params[key] = filler.fill(value, requestVariables);
+          }
+        }
+      }
+      if (sfObjectInput.log) {
+        sfObject.log = {
+          activityType: sfObjectInput.log.activityType,
+          entityType: sfObjectInput.log.entityType,
+          subject: filler.fill(sfObjectInput.log.subject, requestVariables),
+          description: filler.fill(sfObjectInput.log.description, requestVariables)
+        };
+      }
+      body.salesforce = { object: sfObject };
+    }
+
     winston.debug("(DirPicallexCallLead) body: ", body);
 
     const url = PICALLEX_ENDPOINT + "/v1/api/automations/calls/callLeadViaVoicebot";
