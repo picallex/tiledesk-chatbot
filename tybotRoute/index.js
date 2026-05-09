@@ -23,7 +23,7 @@ router.use(bodyParser.urlencoded({ extended: true , limit: '50mb'}));
 /** @type {TdCache} */
 let tdcache = null;
 let MAX_STEPS = 1000;
-let MAX_EXECUTION_TIME = 1000 * 3600 * 8;
+let MAX_EXECUTION_TIME = 1000 * 3600 * 24 * 30;
 
 // DEV
 // const { MessagePipeline } = require('./tiledeskChatbotPlugs/MessagePipeline');
