@@ -117,7 +117,14 @@ class DirPicallexSendTemplate {
         if (policy.data) {
           filledPolicy.data = {};
           for (const [key, value] of Object.entries(policy.data)) {
-            filledPolicy.data[key] = filler.fill(value, requestVariables);
+            if (value && typeof value === 'object' && !Array.isArray(value)) {
+              filledPolicy.data[key] = {};
+              for (const [subKey, subValue] of Object.entries(value)) {
+                filledPolicy.data[key][subKey] = filler.fill(subValue, requestVariables);
+              }
+            } else {
+              filledPolicy.data[key] = filler.fill(value, requestVariables);
+            }
           }
         }
         return filledPolicy;
