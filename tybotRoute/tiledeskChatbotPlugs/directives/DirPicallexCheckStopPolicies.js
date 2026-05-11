@@ -55,6 +55,7 @@ class DirPicallexCheckStopPolicies {
     let falseIntent = action.falseIntent;
     let trueIntentAttributes = action.trueIntentAttributes;
     let falseIntentAttributes = action.falseIntentAttributes;
+    winston.info("(DirPicallexCheckStopPolicies) trueIntent: " + trueIntent + " falseIntent: " + falseIntent);
 
     let requestVariables = await TiledeskChatbot.allParametersStatic(this.tdcache, this.requestId);
     const filler = new Filler();
@@ -155,11 +156,12 @@ class DirPicallexCheckStopPolicies {
 
     this.#myrequest(HTTPREQUEST, async (err, res) => {
       if (err) {
-        winston.error("(DirPicallexCheckStopPolicies) err: ", err);
+        winston.error("(DirPicallexCheckStopPolicies) err: ", err && err.message);
         let status = res ? res.status : 500;
         let errorMsg = res ? res.error : (err.message || "Unknown error");
         this.logger.error("[PicallEx CheckStopPolicies] API error: ", errorMsg);
         await this.#assignAttributes(action, status, errorMsg);
+        winston.info("(DirPicallexCheckStopPolicies) dispatching falseIntent=" + falseIntent);
         if (falseIntent) {
           await this.#executeCondition(false, trueIntent, trueIntentAttributes, falseIntent, falseIntentAttributes);
           callback(true);
@@ -169,10 +171,11 @@ class DirPicallexCheckStopPolicies {
         return;
       }
 
-      winston.debug("(DirPicallexCheckStopPolicies) response: ", res);
+      winston.debug("(DirPicallexCheckStopPolicies) response: ", res && res.status);
       let resultData = res.data ? res.data : null;
       await this.#assignAttributes(action, res.status, null, resultData);
 
+      winston.info("(DirPicallexCheckStopPolicies) dispatching trueIntent=" + trueIntent);
       if (trueIntent) {
         await this.#executeCondition(true, trueIntent, trueIntentAttributes, falseIntent, falseIntentAttributes);
         callback(true);
