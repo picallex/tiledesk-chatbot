@@ -66,7 +66,7 @@ docker exec mongo mongosh tiledesk --quiet --eval '
   const trashedBots = db.faq_kbs.find(
     { trashed: true },
     { _id: 1 }
-  ).map(b => String(b._id));
+  ).toArray().map(b => String(b._id));
   print("trashed bot count:", trashedBots.length);
   const stuck = db.flow_executions.countDocuments({
     bot_id: { $in: trashedBots },
@@ -80,7 +80,7 @@ docker exec mongo mongosh tiledesk --quiet --eval '
   const trashedBots = db.faq_kbs.find(
     { trashed: true },
     { _id: 1 }
-  ).map(b => String(b._id));
+  ).toArray().map(b => String(b._id));
   const r = db.flow_executions.updateMany(
     {
       bot_id: { $in: trashedBots },
