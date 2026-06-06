@@ -48,6 +48,18 @@ class DirWait {
   }
 
   async resolveMillis(action) {
+    // Debug override: when the webhook was invoked with debug.delay, a
+    // request-scoped parameter holds the forced wait duration (ms). It takes
+    // precedence over the flow's configured delay. No-op when absent.
+    if (this.chatbot && this.chatbot.getParameter) {
+      const override = await this.chatbot.getParameter('_debug_delay_ms');
+      if (override != null) {
+        const n = Number(override);
+        if (Number.isFinite(n) && n >= 0) {
+          return n;
+        }
+      }
+    }
     if (!action) {
       return 1000;
     }
