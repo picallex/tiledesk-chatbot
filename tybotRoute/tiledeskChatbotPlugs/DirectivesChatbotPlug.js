@@ -264,6 +264,26 @@ class DirectivesChatbotPlug {
     }
     winston.debug("(DirectivesChatbotPlug) this.context.departmentId: " + this.context.departmentId);
 
+    // Debug mode (optional): the webhook body may carry a `debug` object.
+    // `DirIntent` rebuilds a fresh message on every block hop and drops
+    // attributes.payload, so we persist the forced delay as a request-scoped
+    // parameter on the entry block. It then survives block-to-block hops and
+    // supervisor resumes (params are snapshotted/rehydrated). Only set once.
+    try {
+      const dbg = this.message && this.message.attributes && this.message.attributes.payload
+        ? this.message.attributes.payload.debug : null;
+      if (dbg && this.chatbot && this.chatbot.getParameter) {
+        const existing = await this.chatbot.getParameter('_debug_delay_ms');
+        if (existing == null) {
+          const sec = dbg.delay != null && Number.isFinite(Number(dbg.delay)) ? Number(dbg.delay) : 10;
+          await this.chatbot.addParameter('_debug_delay_ms', sec * 1000);
+          winston.info(`(DirectivesChatbotPlug) [debug] delay override set to ${sec}s`);
+        }
+      }
+    } catch (err) {
+      winston.error("(DirectivesChatbotPlug) [debug] failed to set delay override:", err);
+    }
+
     this.curr_directive_index = -1;
     winston.verbose("(DirectivesChatbotPlug) processing directives...");
 
@@ -642,6 +662,17 @@ class DirectivesChatbotPlug {
    * checkpoint path to compute the deadline.
    */
   async _resolveWaitMillis(directive) {
+    // Debug override: when the webhook was invoked with a `debug` payload, a
+    // request-scoped parameter holds the forced wait duration (ms). It takes
+    // precedence over the flow's configured delay so debug runs don't wait the
+    // real (possibly multi-day) interval. No-op when the param is absent.
+    if (this.chatbot && this.chatbot.getParameter) {
+      const override = await this.chatbot.getParameter('_debug_delay_ms');
+      if (override != null) {
+        const n = Number(override);
+        if (Number.isFinite(n) && n >= 0) return n;
+      }
+    }
     let action;
     if (directive.action) {
       action = directive.action;

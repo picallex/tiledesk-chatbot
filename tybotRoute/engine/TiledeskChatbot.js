@@ -290,7 +290,25 @@ class TiledeskChatbot {
         }
         else {
           winston.verbose("(TiledeskChatbot) Processing intent:", explicit_intent_name)
-          let faq = await this.botsDataSource.getByIntentDisplayNameCache(this.botId, intent.name, this.tdcache);
+          // Debug mode (optional): if the webhook body carries debug.fromStep,
+          // start from that block (by display name) instead of the configured
+          // entry block. If the name doesn't resolve, fall back to the original
+          // intent (i.e. run from the beginning). Only the entry message carries
+          // attributes.payload, so this never affects subsequent block hops.
+          let faq = null;
+          const fromStep = message.attributes && message.attributes.payload
+            ? message.attributes.payload.debug && message.attributes.payload.debug.fromStep : null;
+          if (fromStep) {
+            faq = await this.botsDataSource.getByIntentDisplayNameCache(this.botId, fromStep, this.tdcache);
+            if (faq) {
+              winston.info("(TiledeskChatbot) [debug] starting from step: " + fromStep);
+            } else {
+              winston.warn("(TiledeskChatbot) [debug] fromStep '" + fromStep + "' not found; using entry block");
+            }
+          }
+          if (!faq) {
+            faq = await this.botsDataSource.getByIntentDisplayNameCache(this.botId, intent.name, this.tdcache);
+          }
           // console.log("faq: ", JSON.stringify(faq, null, 2))
 
           if (faq) {
