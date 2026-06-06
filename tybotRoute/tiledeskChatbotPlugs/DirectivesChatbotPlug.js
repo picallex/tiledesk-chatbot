@@ -272,10 +272,10 @@ class DirectivesChatbotPlug {
     try {
       const dbg = this.message && this.message.attributes && this.message.attributes.payload
         ? this.message.attributes.payload.debug : null;
-      if (dbg && this.chatbot && this.chatbot.getParameter) {
+      if (dbg && dbg.delay != null && Number.isFinite(Number(dbg.delay)) && this.chatbot && this.chatbot.getParameter) {
         const existing = await this.chatbot.getParameter('_debug_delay_ms');
         if (existing == null) {
-          const sec = dbg.delay != null && Number.isFinite(Number(dbg.delay)) ? Number(dbg.delay) : 10;
+          const sec = Number(dbg.delay);
           await this.chatbot.addParameter('_debug_delay_ms', sec * 1000);
           winston.info(`(DirectivesChatbotPlug) [debug] delay override set to ${sec}s`);
         }
