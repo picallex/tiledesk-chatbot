@@ -683,10 +683,23 @@ router.post('/block/:project_id/:bot_id/:block_id', async (req, res) => {
     winston.verbose("Sync webhook. Subscribe and await for reply...")
     let uniqueid = nanoid();
     const topic = `/webhooks/${request_id}`;
-    
+
+    // Safety net: a flow can fail to publish a response (a directive crashed,
+    // the flow has no Web Response block on the taken path, etc.). Without a
+    // timeout the HTTP request hangs until an upstream proxy kills it, with no
+    // diagnostic body. After WEBHOOK_SYNC_TIMEOUT_MS we unsubscribe and return
+    // 502 with any `flowError` the flow recorded. Successful responses are
+    // unaffected — the listener fires first and clears the timer.
+    const SYNC_TIMEOUT_MS = Number(process.env.WEBHOOK_SYNC_TIMEOUT_MS) || 30000;
+    let settled = false;
+    let timeoutHandle = null;
+
     try {
 
       const listener = async (message, topic) => {
+        if (settled) return;
+        settled = true;
+        if (timeoutHandle) { clearTimeout(timeoutHandle); timeoutHandle = null; }
         winston.debug("Web response is: " + JSON.stringify(message) + " for topic " + topic);
         await tdcache.unsubscribe(topic);
 
@@ -698,7 +711,25 @@ router.post('/block/:project_id/:bot_id/:block_id', async (req, res) => {
       }
       await tdcache.subscribe(topic, listener);
 
+      timeoutHandle = setTimeout(async () => {
+        if (settled) return;
+        settled = true;
+        try { await tdcache.unsubscribe(topic); } catch (e) { /* best effort */ }
+        let flowError = null;
+        try {
+          const params = await TiledeskChatbot.allParametersStatic(tdcache, request_id);
+          flowError = params && params.flowError;
+        } catch (e) { /* best effort */ }
+        winston.error(`(tybotRoute) Sync webhook produced no response within ${SYNC_TIMEOUT_MS}ms for ${request_id}. flowError=${flowError}`);
+        return res.status(502).send({
+          success: false,
+          error: 'flow_no_response',
+          message: flowError || `No response produced by the flow within ${SYNC_TIMEOUT_MS}ms`
+        });
+      }, SYNC_TIMEOUT_MS);
+
     } catch(err) {
+      if (timeoutHandle) { clearTimeout(timeoutHandle); timeoutHandle = null; }
       winston.error("Error cache subscribe ", err);
       return res.status(500).send({ success: false, error: "Error during cache subscription"})
     }
