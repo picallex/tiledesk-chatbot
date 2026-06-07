@@ -55,7 +55,39 @@ class DirWebResponse {
     
     const filler = new Filler();
     const filled_status = filler.fill(action.status, requestAttributes);
-    const json = await this.getJsonFromAction(action, filler, requestAttributes)
+
+    const topic = `/webhooks/${this.requestId}`;
+
+    // Build the response payload. If the configured JSON body is invalid
+    // (after variable substitution), getJsonFromAction rejects. Previously
+    // that rejection escaped uncaught: the process logged an
+    // UnhandledPromiseRejection, `callback()` never fired, and — critically —
+    // nothing was ever published to the topic, so the synchronous webhook
+    // caller hung with no body. Catch it here and publish a 502 error
+    // response instead, so the caller actually sees what went wrong.
+    let json;
+    try {
+      json = await this.getJsonFromAction(action, filler, requestAttributes);
+    }
+    catch (err) {
+      const message = (typeof err === 'string')
+        ? err
+        : (err && err.message ? err.message : 'Error building web response');
+      try { await TiledeskChatbot.addParameterStatic(this.tdcache, this.requestId, "flowError", message); } catch (e) { /* best effort */ }
+      const errorResponse = {
+        status: 502,
+        payload: { success: false, error: 'flow_response_error', message: message }
+      };
+      try {
+        this.tdcache.publish(topic, JSON.stringify(errorResponse));
+        winston.error("(DirWebResponse) flow error surfaced to webhook response: " + message);
+      }
+      catch (e) {
+        winston.error("(DirWebResponse) failed publishing error response: ", e);
+      }
+      callback();
+      return;
+    }
 
     let webResponse = {
       status: filled_status,
@@ -64,8 +96,6 @@ class DirWebResponse {
 
     this.logger.native("[Web Response] payload: ", webResponse);
 
-    const topic = `/webhooks/${this.requestId}`;
-    
     try {
       this.tdcache.publish(topic, JSON.stringify(webResponse));
       winston.verbose("DirWebResponse Published webresponse to topic: " + topic);
@@ -75,7 +105,7 @@ class DirWebResponse {
     }
 
     callback();
-    
+
   }
 
   async getJsonFromAction(action, filler, requestAttributes) {
