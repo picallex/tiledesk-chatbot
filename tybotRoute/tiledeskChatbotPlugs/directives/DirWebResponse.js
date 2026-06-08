@@ -4,6 +4,7 @@ const { TiledeskChatbotUtil } = require('../../utils/TiledeskChatbotUtil');
 const winston = require('../../utils/winston');
 let axios = require('axios');
 const { Logger } = require('../../Logger');
+const { publishFlowError } = require('../FlowError');
 
 class DirWebResponse {
 
@@ -73,44 +74,17 @@ class DirWebResponse {
       const message = (typeof err === 'string')
         ? err
         : (err && err.message ? err.message : 'Error building web response');
-
-      // Block (intent) display name where the failure happened — the single
-      // most useful pointer so the operator doesn't have to scan the flow.
-      const blockName = this.context && this.context.reply && this.context.reply.attributes && this.context.reply.attributes.intent_info
-        ? this.context.reply.attributes.intent_info.intent_name
-        : null;
-      const filledBody = (err && err.filledBody != null) ? String(err.filledBody) : undefined;
-      const detail = (err && err.parseError) ? err.parseError : undefined;
-      const unresolved = this._unresolvedVariables(action && action.payload, filledBody, requestAttributes);
-
-      const payload = {
-        success: false,
-        error: 'flow_response_error',
+      await publishFlowError({
+        tdcache: this.tdcache,
+        requestId: this.requestId,
+        context: this.context,
+        directive: 'web_response',
         message: message,
-        block: blockName,
-        directive: 'web_response'
-      };
-      if (detail) payload.detail = detail;
-      if (unresolved.length) payload.unresolvedVariables = unresolved;
-      if (filledBody !== undefined) {
-        payload.body = filledBody.length > 1000 ? (filledBody.slice(0, 1000) + '…') : filledBody;
-      }
-
-      // Human-readable summary reused for the flowError param (route timeout
-      // path) and the ops log line.
-      const summary = `[block: ${blockName || 'web_response'}] ${message}`
-        + (unresolved.length ? ` | unresolved vars: ${unresolved.join(', ')}` : '')
-        + (detail ? ` | ${detail}` : '');
-
-      try { await TiledeskChatbot.addParameterStatic(this.tdcache, this.requestId, "flowError", summary); } catch (e) { /* best effort */ }
-      const errorResponse = { status: 502, payload: payload };
-      try {
-        this.tdcache.publish(topic, JSON.stringify(errorResponse));
-        winston.error("(DirWebResponse) flow error surfaced to webhook response: " + summary + (filledBody !== undefined ? ` | body: ${payload.body}` : ''));
-      }
-      catch (e) {
-        winston.error("(DirWebResponse) failed publishing error response: ", e);
-      }
+        template: action && action.payload,
+        params: requestAttributes,
+        filledBody: err && err.filledBody,
+        parseError: err && err.parseError
+      });
       callback();
       return;
     }
@@ -132,39 +106,6 @@ class DirWebResponse {
 
     callback();
 
-  }
-
-  /**
-   * Best-effort detection of variables referenced in the body template that
-   * did not resolve. Two signals:
-   *   1. Tokens in the raw template (`${name}` legacy, `{{ name }}` Liquid)
-   *      whose top-level key is absent from the request attributes.
-   *   2. Any `${name}` still present verbatim in the filled output — the
-   *      legacy filler leaves these untouched when the key is missing.
-   * A missing variable typically renders to empty (Liquid) or stays literal
-   * (legacy), which is exactly what breaks the JSON.
-   */
-  _unresolvedVariables(template, filledBody, params) {
-    const found = new Set();
-    const has = (name) => {
-      if (!params) return false;
-      const top = String(name).split('.')[0].split('[')[0].trim();
-      return params[top] !== undefined;
-    };
-    if (typeof template === 'string') {
-      (template.match(/\$\{[^}]+\}/g) || []).forEach((t) => {
-        const name = t.slice(2, -1).trim();
-        if (!has(name)) found.add(name);
-      });
-      (template.match(/\{\{\s*[^}|]+\s*\}\}/g) || []).forEach((t) => {
-        const name = t.replace(/[{}]/g, '').trim();
-        if (name && !has(name)) found.add(name);
-      });
-    }
-    if (typeof filledBody === 'string') {
-      (filledBody.match(/\$\{[^}]+\}/g) || []).forEach((t) => found.add(t.slice(2, -1).trim()));
-    }
-    return Array.from(found);
   }
 
   async getJsonFromAction(action, filler, requestAttributes) {

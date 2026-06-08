@@ -5,6 +5,7 @@ const { TiledeskChatbot } = require('../../engine/TiledeskChatbot');
 const { DirIntent } = require('./DirIntent');
 const winston = require('../../utils/winston');
 const { Logger } = require('../../Logger');
+const { publishFlowError } = require('../FlowError');
 
 class DirWebRequestV2 {
 
@@ -78,6 +79,17 @@ class DirWebRequestV2 {
         callback(true);
         return Promise.reject(err);;
       }
+      // No false branch to handle it: surface the error to the sync webhook
+      // caller instead of letting the request hang until the route timeout.
+      await publishFlowError({
+        tdcache: this.tdcache,
+        requestId: this.requestId,
+        context: this.context,
+        directive: 'web_request',
+        message: (err && err.message) ? err.message : 'Error getting headers',
+        template: action.headersString,
+        params: requestAttributes
+      });
       callback();
       return Promise.reject(err);
     });
@@ -90,6 +102,19 @@ class DirWebRequestV2 {
         callback(true);
         return Promise.reject(err);;
       }
+      // No false branch to handle it: surface the error to the sync webhook
+      // caller instead of letting the request hang until the route timeout.
+      await publishFlowError({
+        tdcache: this.tdcache,
+        requestId: this.requestId,
+        context: this.context,
+        directive: 'web_request',
+        message: (err && err.message) ? err.message : 'Error parsing jsonBody',
+        template: (action.bodyType == "form-data") ? action.formData : action.jsonBody,
+        params: requestAttributes,
+        filledBody: err && err.filledBody,
+        parseError: err && err.parseError
+      });
       callback();
       return Promise.reject(err);
     });
@@ -167,7 +192,9 @@ class DirWebRequestV2 {
           }
           resolve(headers)
         } catch(err) {
-          reject("Error getting headers");
+          const e = new Error("Error getting headers");
+          e.parseError = (err && err.message) ? err.message : String(err);
+          reject(e);
         }
       } else {
         resolve(headers)
@@ -187,7 +214,10 @@ class DirWebRequestV2 {
         }
         catch (err) {
           winston.error("DirWebRequestV2 Error parsing webRequest jsonBody: " + JSON.stringify(jsonBody) + "\nError: " + JSON.stringify(err));
-          reject("Error parsing jsonBody");
+          const e = new Error("Error parsing jsonBody");
+          e.filledBody = jsonBody;
+          e.parseError = (err && err.message) ? err.message : String(err);
+          reject(e);
         }
       }
       else if (action.formData && action.bodyType == "form-data") {
@@ -219,8 +249,11 @@ class DirWebRequestV2 {
           }
           resolve(json);
         } catch (err) {
-          winston.error("DirWebRequestV2 Error parsing webRequest formData: " + JSON.stringify(formData) + "\nError: " + JSON.stringify(err)); 
-          reject("Error parsing formData");
+          winston.error("DirWebRequestV2 Error parsing webRequest formData: " + JSON.stringify(formData) + "\nError: " + JSON.stringify(err));
+          const e = new Error("Error parsing formData");
+          e.filledBody = (typeof formData === 'string') ? formData : JSON.stringify(formData);
+          e.parseError = (err && err.message) ? err.message : String(err);
+          reject(e);
         }
       }
       else {
