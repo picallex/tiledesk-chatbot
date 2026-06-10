@@ -190,6 +190,7 @@ class DirWebRequestV2 {
             let filled_value = filler.fill(value, requestAttributes);
             headers[key] = filled_value;
           }
+          this.addBotIdHeader(headers);
           resolve(headers)
         } catch(err) {
           const e = new Error("Error getting headers");
@@ -197,10 +198,21 @@ class DirWebRequestV2 {
           reject(e);
         }
       } else {
+        this.addBotIdHeader(headers);
         resolve(headers)
       }
 
     })
+  }
+
+  // Always identify the calling bot so external services can attribute the
+  // request without requiring every flow to configure the header manually.
+  // A header explicitly set on the action takes precedence.
+  addBotIdHeader(headers) {
+    const alreadySet = Object.keys(headers).some((key) => key.toLowerCase() === 'x-bot-id');
+    if (!alreadySet && this.chatbot && this.chatbot.botId) {
+      headers['X-Bot-Id'] = this.chatbot.botId;
+    }
   }
   async getJsonFromAction(action, filler, requestAttributes) {
 

@@ -63,6 +63,7 @@ describe('Conversation for WebRequestV2 test', async () => {
       assert(req.headers["user-agent"] === "TiledeskBotRuntime");
       assert(req.headers["content-type"] === "*/*");
       assert(req.headers["cache-control"] === "no-cache");
+      assert(req.headers["x-bot-id"] === BOT_ID);
       res.send({
         "city": "NY",
         "age": 50
@@ -127,6 +128,7 @@ describe('Conversation for WebRequestV2 test', async () => {
       assert(req.headers["user-agent"] === "TiledeskBotRuntime");
       assert(req.headers["content-type"] === "*/*");
       assert(req.headers["cache-control"] === "no-cache");
+      assert(req.headers["x-bot-id"] === BOT_ID);
       res.send({
         "city": "NY",
         "age": 50
@@ -185,6 +187,7 @@ describe('Conversation for WebRequestV2 test', async () => {
       assert(req.headers["user-agent"] === "TiledeskBotRuntime");
       assert(req.headers["content-type"] === "*/*");
       assert(req.headers["cache-control"] === "no-cache");
+      assert(req.headers["x-bot-id"] === BOT_ID);
       res.send({
         "city": "NY",
         "age": 50
@@ -246,6 +249,7 @@ describe('Conversation for WebRequestV2 test', async () => {
       assert(req.headers["user-agent"] === "TiledeskBotRuntime");
       assert(req.headers["content-type"] === "*/*");
       assert(req.headers["cache-control"] === "no-cache");
+      assert(req.headers["x-bot-id"] === BOT_ID);
       res.sendStatus(300);
     });
     endpointServer.post('/:projectId/requests/:requestId/messages', function (req, res) {

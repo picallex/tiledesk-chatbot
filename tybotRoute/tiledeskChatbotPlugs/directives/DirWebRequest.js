@@ -13,6 +13,7 @@ class DirWebRequest {
     this.context = context;
     this.tdcache = context.tdcache;
     this.requestId = context.requestId;
+    this.chatbot = context.chatbot;
   }
 
   execute(directive, callback) {
@@ -51,6 +52,7 @@ class DirWebRequest {
         headers[key] = filled_value;
       }
     }
+    this.addBotIdHeader(headers);
     let json = null;
     if (action.jsonBody && action.jsonBody !== "{}") {
       let jsonBody = filler.fill(action.jsonBody, requestVariables);
@@ -121,6 +123,16 @@ class DirWebRequest {
         }
       }
     );
+  }
+
+  // Always identify the calling bot so external services can attribute the
+  // request without requiring every flow to configure the header manually.
+  // A header explicitly set on the action takes precedence.
+  addBotIdHeader(headers) {
+    const alreadySet = Object.keys(headers).some((key) => key.toLowerCase() === 'x-bot-id');
+    if (!alreadySet && this.chatbot && this.chatbot.botId) {
+      headers['X-Bot-Id'] = this.chatbot.botId;
+    }
   }
 
   myrequest(options, callback) {
