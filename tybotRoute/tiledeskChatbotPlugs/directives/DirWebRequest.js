@@ -4,6 +4,7 @@ const { Filler } = require('../Filler');
 const { TiledeskChatbot } = require('../../engine/TiledeskChatbot');
 const { TiledeskJSONEval } = require('../../TiledeskJSONEval');
 const winston = require('../../utils/winston');
+const { addBotIdHeader } = require('./BotIdHeader');
 
 class DirWebRequest {
   constructor(context) {
@@ -13,6 +14,7 @@ class DirWebRequest {
     this.context = context;
     this.tdcache = context.tdcache;
     this.requestId = context.requestId;
+    this.chatbot = context.chatbot;
   }
 
   execute(directive, callback) {
@@ -51,6 +53,7 @@ class DirWebRequest {
         headers[key] = filled_value;
       }
     }
+    addBotIdHeader(headers, this.chatbot);
     let json = null;
     if (action.jsonBody && action.jsonBody !== "{}") {
       let jsonBody = filler.fill(action.jsonBody, requestVariables);

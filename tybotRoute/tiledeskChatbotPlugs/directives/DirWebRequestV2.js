@@ -6,6 +6,7 @@ const { DirIntent } = require('./DirIntent');
 const winston = require('../../utils/winston');
 const { Logger } = require('../../Logger');
 const { publishFlowError } = require('../FlowError');
+const { addBotIdHeader } = require('./BotIdHeader');
 
 class DirWebRequestV2 {
 
@@ -190,6 +191,7 @@ class DirWebRequestV2 {
             let filled_value = filler.fill(value, requestAttributes);
             headers[key] = filled_value;
           }
+          addBotIdHeader(headers, this.chatbot);
           resolve(headers)
         } catch(err) {
           const e = new Error("Error getting headers");
@@ -197,6 +199,7 @@ class DirWebRequestV2 {
           reject(e);
         }
       } else {
+        addBotIdHeader(headers, this.chatbot);
         resolve(headers)
       }
 

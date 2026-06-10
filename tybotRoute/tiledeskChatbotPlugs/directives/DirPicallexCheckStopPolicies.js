@@ -7,6 +7,7 @@ require('dotenv').config();
 const winston = require('../../utils/winston');
 const integrationService = require("../../services/IntegrationService");
 const { Logger } = require("../../Logger");
+const { addBotIdHeader } = require("./BotIdHeader");
 
 const PICALLEX_ENDPOINT = process.env.PICALLEX_ENDPOINT || "https://crm.picallex.com";
 
@@ -144,10 +145,10 @@ class DirPicallexCheckStopPolicies {
 
     const HTTPREQUEST = {
       url: url,
-      headers: {
+      headers: addBotIdHeader({
         'Content-Type': 'application/json',
         'x-api-key': apiKey
-      },
+      }, this.context.chatbot),
       json: body,
       method: "POST"
     };
