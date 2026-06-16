@@ -288,7 +288,7 @@ class DirAssistant {
       const HTTPREQUEST = {
         url: url,
         headers: headers,
-        json: '', // no old messages on creation
+        json: {}, // no old messages on creation; empty JSON body so axios sends application/json
         method: "POST",
         timeout: this.timeout
       };
