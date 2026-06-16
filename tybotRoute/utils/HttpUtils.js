@@ -36,17 +36,19 @@ class HttpUtils {
         }
       })
       .catch((error) => {
-        if (error.response?.data) {
-          if (typeof error.response.data === 'string') {
-            winston.error("Axios error response data: " + error.response.data);
-          } else {
-            winston.error("Axios error response data: ", error.response.data);
-          }
-        } else if (error.response) {
-          winston.error("Axios error response: ", error.response);
+        // Log only safe fields. The raw axios error embeds the full request
+        // config (including the Authorization header) and circular socket/TLS
+        // data, which would leak secrets and flood the logs.
+        const status = error.response?.status;
+        const data = error.response?.data;
+        let detail;
+        if (data) {
+          detail = typeof data === 'string' ? data : (data.error?.message || JSON.stringify(data));
         } else {
-          winston.error("Axios error: ", error);
+          detail = error.message;
         }
+        winston.error(`Axios error (${error.config?.method?.toUpperCase()} ${error.config?.url})` +
+          (status ? ` status ${status}` : '') + `: ${detail}`);
         if (callback) {
           callback(error, null);
         }
