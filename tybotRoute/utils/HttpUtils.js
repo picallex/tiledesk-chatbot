@@ -13,7 +13,7 @@ class HttpUtils {
       params: options.params,
       headers: options.headers
     }
-    if (options.json !== null) {
+    if (options.json != null) {
       axios_options.data = options.json
     }
     if (options.url.startsWith("https:")) {

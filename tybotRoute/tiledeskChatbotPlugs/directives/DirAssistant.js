@@ -282,13 +282,14 @@ class DirAssistant {
     return new Promise( async (resolve, reject) => {
       const url = "https://api.openai.com/v1/threads";
       const headers = {
+        "Content-Type": "application/json",
         "Authorization": apikey,
         "OpenAI-Beta": "assistants=v2"
       }
       const HTTPREQUEST = {
         url: url,
         headers: headers,
-        json: {}, // no old messages on creation; empty JSON body so axios sends application/json
+        json: {},
         method: "POST",
         timeout: this.timeout
       };
