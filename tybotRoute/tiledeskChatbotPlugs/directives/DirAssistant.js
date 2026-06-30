@@ -202,7 +202,7 @@ class DirAssistant {
       }
     }
     catch (error) {
-      winston.error("(DirAssistant) error:", error);
+      winston.error("(DirAssistant) error: " + (error?.response?.data?.error?.message || error?.message));
       await TiledeskChatbot.addParameterStatic(this.context.tdcache, this.context.requestId, assignErrorTo, error);
       if (falseIntent) {
         await this.#executeCondition(false, trueIntent, null, falseIntent, null);
@@ -292,12 +292,12 @@ class DirAssistant {
         method: "POST",
         timeout: this.timeout
       };
-      winston.debug("(DirAssistant) DirAssistant HttpRequest", HTTPREQUEST);
+      winston.debug("(DirAssistant) DirAssistant HttpRequest", { ...HTTPREQUEST, headers: { ...HTTPREQUEST.headers, Authorization: "***" } });
       httpUtils.request(
         HTTPREQUEST, async (err, res) => {
 
           if (err) {
-            winston.error("(DirAssistant) error: ", err);
+            winston.error("(DirAssistant) error: " + (err?.response?.data?.error?.message || err?.message));
             reject(err);
           }
           let thread = res;
@@ -352,7 +352,7 @@ class DirAssistant {
         HTTPREQUEST, async (err, res) => {
 
           if (err) {
-            winston.error("(DirAssistant) error: ", err);
+            winston.error("(DirAssistant) error: " + (err?.response?.data?.error?.message || err?.message));
             reject(err);
           }
           winston.debug("(DirAssistant) got response data: ", res);
@@ -406,7 +406,7 @@ class DirAssistant {
       httpUtils.request(
         HTTPREQUEST, async (err, res) => {
           if (err) {
-            winston.error("(DirAssistant) error: ", err);
+            winston.error("(DirAssistant) error: " + (err?.response?.data?.error?.message || err?.message));
             reject(err);
           }
           winston.debug("(DirAddTags) got response data: ", res);
@@ -434,7 +434,7 @@ class DirAssistant {
       httpUtils.request(
         HTTPREQUEST, async (err, res) => {
           if (err) {
-            winston.error("(DirAssistant) error: ", err);
+            winston.error("(DirAssistant) error: " + (err?.response?.data?.error?.message || err?.message));
             reject(err);
           }
           winston.debug("(DirAddTags) got response data: ", res);
@@ -462,7 +462,7 @@ class DirAssistant {
       httpUtils.request(
         HTTPREQUEST, async (err, res) => {
           if (err) {
-            winston.error("(DirAssistant) error: ", err);
+            winston.error("(DirAssistant) error: " + (err?.response?.data?.error?.message || err?.message));
             reject(err);
           }
           winston.debug("(DirAddTags) got response data: ", res);

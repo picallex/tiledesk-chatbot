@@ -216,7 +216,7 @@ class DirWebRequestV2 {
           resolve(json);
         }
         catch (err) {
-          winston.error("DirWebRequestV2 Error parsing webRequest jsonBody: " + JSON.stringify(jsonBody) + "\nError: " + JSON.stringify(err));
+          winston.error("DirWebRequestV2 Error parsing webRequest jsonBody: " + JSON.stringify(jsonBody) + "\nError: " + (err && err.message ? err.message : String(err)));
           const e = new Error("Error parsing jsonBody");
           e.filledBody = jsonBody;
           e.parseError = (err && err.message) ? err.message : String(err);
@@ -252,7 +252,7 @@ class DirWebRequestV2 {
           }
           resolve(json);
         } catch (err) {
-          winston.error("DirWebRequestV2 Error parsing webRequest formData: " + JSON.stringify(formData) + "\nError: " + JSON.stringify(err));
+          winston.error("DirWebRequestV2 Error parsing webRequest formData: " + JSON.stringify(formData) + "\nError: " + (err && err.message ? err.message : String(err)));
           const e = new Error("Error parsing formData");
           e.filledBody = (typeof formData === 'string') ? formData : JSON.stringify(formData);
           e.parseError = (err && err.message) ? err.message : String(err);
@@ -354,30 +354,22 @@ class DirWebRequestV2 {
           }
         })
         .catch((err) => {
-          // FIX THE STRINGIFY OF CIRCULAR STRUCTURE BUG - END
           if (callback) {
-            let status = 1000;
-            let cache = [];
-            let str_error = JSON.stringify(err, function (key, value) { // try to use a separate function
-              if (typeof value === 'object' && value != null) {
-                if (cache.indexOf(value) !== -1) {
-                  return;
-                }
-                cache.push(value);
-              }
-              return value;
-            });
-            let error = JSON.parse(str_error) // "status" disappears without this trick
-            let errorMessage = JSON.stringify(error);
-            if (error.status) {
-              status = error.status;
-            }
-            if (error.message) {
-              errorMessage = error.message;
-            }
-            let data = null;
-            if (err.response) {
-              data = err.response.data;
+            // Do NOT serialize the raw axios error. Its `config` embeds the
+            // live httpsAgent/socket/TLS graph (deeply nested, effectively
+            // unbounded), which overflows the call stack during JSON
+            // serialization ("Maximum call stack size exceeded"), and the
+            // Authorization header, which would leak secrets into logs and
+            // assigned attributes. Extract only safe scalar fields.
+            const status = err.response?.status || err.status || 1000;
+            const data = err.response?.data ?? null;
+            let errorMessage;
+            if (data && typeof data === 'object') {
+              errorMessage = data.error?.message || err.message;
+            } else if (typeof data === 'string') {
+              errorMessage = data;
+            } else {
+              errorMessage = err.message;
             }
             callback(
               null, {
