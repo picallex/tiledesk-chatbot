@@ -76,12 +76,22 @@ var FlowExecutionSchema = new Schema({
   //   failed        — exhausted retries
   //   needs_review  — crashed mid-flow; operator must inspect (auto-retry
   //                   disabled to avoid duplicate side-effects)
+  //   paused        — operator paused from Picallex (manage). Inert: the
+  //                   supervisor only auto-resumes from 'waiting', so a paused
+  //                   execution never fires until an operator resumes it
+  //                   (flips back to 'waiting' with expected_end_at = now).
   status: {
     type: String,
-    enum: ['running', 'waiting', 'completed', 'failed', 'needs_review'],
+    enum: ['running', 'waiting', 'completed', 'failed', 'needs_review', 'paused'],
     default: 'running',
     index: true
   },
+
+  // Operator audit trail for the pause/resume actions (set by tiledesk-server).
+  paused_by: { type: String },
+  paused_at: { type: Date },
+  resumed_by: { type: String },
+  resumed_at: { type: Date },
 
   // Idempotency log — append-only.
   // idempotency_key is deterministic (execution_id + directive_index +
