@@ -98,6 +98,11 @@ async function resumeFlowExecution(doc) {
   if (!bot) {
     throw new Error(`Bot ${bot_id} not found for execution ${doc.execution_id}`);
   }
+  // Prefer the root (original) bot id over the published-snapshot id, so
+  // logs carry the bot id users recognise (same rule as resolveBotId).
+  if (bot.root_id) {
+    logContext.setContext({ bot_id: String(bot.root_id) });
+  }
   // NOTE: an earlier version of this code refused to resume when
   // `bot.trashed === true`, on the theory that trashed bots were the
   // source of poison-pill resumes that hung the supervisor. That theory
@@ -207,7 +212,14 @@ router.post('/ext/:botid', async (req, res) => {
     Promise.reject(err);
     return;
   });
-  
+
+  // Prefer the root (original) bot id over the published-snapshot id from
+  // the URL, so logs carry the bot id users recognise (same rule as
+  // resolveBotId in BotIdHeader).
+  if (bot && bot.root_id) {
+    logContext.setContext({ bot_id: String(bot.root_id) });
+  }
+
   let intentsMachine;
   let backupMachine;
   if (!staticBots) {
@@ -373,6 +385,13 @@ router.post('/exec/:botid', async (req, res) => {
     Promise.reject(err);
     return;
   });
+
+  // Prefer the root (original) bot id over the published-snapshot id from
+  // the URL, so logs carry the bot id users recognise (same rule as
+  // resolveBotId in BotIdHeader).
+  if (bot && bot.root_id) {
+    logContext.setContext({ bot_id: String(bot.root_id) });
+  }
 
   let intentsMachine;
   let backupMachine;
