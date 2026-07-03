@@ -166,7 +166,11 @@ class TiledeskChatbotUtil {
                 if (commands[i].type === "message") { // is a message, not wait
                     // if (commands[i].message["lang"] && !(commands[i].message["lang"] === lang)) { // if there is a filter and the filter is false, remove
                     const jsonCondition = commands[i].message["_tdJSONCondition"];
-                    if (jsonCondition) {
+                    // Only evaluate when the condition actually has conditions.
+                    // An empty one ({type:"expression", conditions:[]}, an editor
+                    // artifact) compiles to "()" and throws "Unexpected token ')'"
+                    // on every send. Treat empty as "no condition" → include it.
+                    if (jsonCondition && Array.isArray(jsonCondition.conditions) && jsonCondition.conditions.length > 0) {
                         const expression = TiledeskExpression.JSONGroupToExpression(jsonCondition);
                         const conditionResult = new TiledeskExpression().evaluateStaticExpression(expression, variables);
                         if (conditionResult === false) {
