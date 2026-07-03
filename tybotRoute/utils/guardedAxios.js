@@ -12,6 +12,7 @@
 // axios never runs and the process never dies.
 const axios = require('axios');
 const winston = require('./winston');
+const logContext = require('./logContext');
 const { inspectPayload } = require('./payloadInspect');
 
 function guardedAxios(config, label) {
@@ -37,6 +38,16 @@ function guardedAxios(config, label) {
     });
     return Promise.reject(Object.assign(new Error(msg), { payloadGuard: true }));
   }
+
+  // Stash the payload in the log context so that if axios still stack-
+  // overflows while serializing it (an error that escapes catch handlers and
+  // surfaces as an unhandledRejection), the global handler can log the exact
+  // params/body + which call caused it. Guaranteed capture, no per-request noise.
+  try {
+    logContext.setContext({
+      axios_last: { url: cfg.url, method: cfg.method, label: label || null, data: cfg.data, params: cfg.params }
+    });
+  } catch (e) { /* never block the request on bookkeeping */ }
 
   return axios(cfg);
 }

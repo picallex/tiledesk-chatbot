@@ -4,6 +4,7 @@ const { Filler } = require('../Filler');
 const { TiledeskChatbot } = require('../../engine/TiledeskChatbot');
 const { DirIntent } = require('./DirIntent');
 const winston = require('../../utils/winston');
+const logContext = require('../../utils/logContext');
 const { Logger } = require('../../Logger');
 const { publishFlowError } = require('../FlowError');
 const { addBotIdHeader } = require('./BotIdHeader');
@@ -404,6 +405,21 @@ class DirWebRequestV2 {
       // unhandledRejection that kills the process. Detect it here, log the
       // offending key (block/bot_id/request_id come from the log context),
       // and fail the block cleanly via the normal error callback instead.
+      // Stash the outgoing payload in the log context BEFORE axios touches
+      // it. If axios then stack-overflows while serializing it (an error that
+      // escapes the guards below and surfaces as an unhandledRejection), the
+      // global handler reads this back and logs the exact params/body that
+      // caused it — guaranteed capture without logging every request.
+      logContext.setContext({
+        axios_last: {
+          url: options.url,
+          method: options.method,
+          label: 'DirWebRequestV2',
+          data: axios_options.data,
+          params: axios_options.params
+        }
+      });
+
       const dataCheck = inspectPayload(axios_options.data);
       const paramsCheck = dataCheck.ok ? inspectPayload(axios_options.params) : dataCheck;
       const badCheck = !dataCheck.ok
