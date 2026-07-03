@@ -1,4 +1,5 @@
 const axios = require("axios").default;
+const { guardedAxios } = require('../../utils/guardedAxios');
 const { TiledeskChatbot } = require("../../engine/TiledeskChatbot");
 const { Filler } = require("../Filler");
 const { DirIntent } = require("./DirIntent");
@@ -240,7 +241,7 @@ class DirPicallexCallLead {
       const httpsAgent = new https.Agent({ rejectUnauthorized: false });
       axios_options.httpsAgent = httpsAgent;
     }
-    axios(axios_options)
+    guardedAxios(axios_options, "DirPicallexCallLead")
       .then((res) => {
         if (callback) {
           callback(null, res);

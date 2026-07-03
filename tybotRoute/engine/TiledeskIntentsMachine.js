@@ -1,6 +1,7 @@
 
 let axios = require('axios');
 const winston = require('../utils/winston');
+const { guardedAxios } = require('../utils/guardedAxios');
 
 class TiledeskIntentsMachine {
 
@@ -93,14 +94,14 @@ class TiledeskIntentsMachine {
   }
 
   myrequest(options, callback) {
-    axios(
+    guardedAxios(
       {
         url: options.url,
         method: options.method,
         data: options.json,
         params: options.params,
         headers: options.headers
-      })
+      }, "TiledeskIntentsMachine.myrequest")
     .then((res) => {
       if (res && res.status == 200 && res.data) {
         if (callback) {
