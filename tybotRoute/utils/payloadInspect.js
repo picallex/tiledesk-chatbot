@@ -36,4 +36,40 @@ function inspectPayload(root, maxDepth) {
   return bad ? { ok: false, reason: bad.reason, path: bad.path } : { ok: true };
 }
 
-module.exports = { inspectPayload, DEFAULT_MAX_DEPTH };
+// Cycle-safe, bounded serialization for logging. Marks repeated object
+// references as "[Circular]" (instead of throwing like JSON.stringify) so a
+// circular payload still logs its shape and reveals which key holds the
+// cycle. Never throws; truncates to maxLen.
+function safePreview(value, maxLen) {
+  if (value === undefined) return undefined;
+  if (value === null || typeof value !== 'object') return value;
+  const seen = new WeakSet();
+  let s;
+  try {
+    s = JSON.stringify(value, function (key, val) {
+      if (val && typeof val === 'object') {
+        if (seen.has(val)) return '[Circular]';
+        seen.add(val);
+      }
+      return val;
+    });
+  } catch (e) {
+    s = '[unserializable: ' + ((e && e.message) || e) + ']';
+  }
+  const limit = typeof maxLen === 'number' ? maxLen : 6000;
+  if (typeof s === 'string' && s.length > limit) {
+    return s.slice(0, limit) + '…(+' + (s.length - limit) + ' more bytes)';
+  }
+  return s;
+}
+
+// True for a "Maximum call stack size exceeded" error, however it reaches us
+// (RangeError instance or a message match).
+function isStackOverflow(err) {
+  if (!err) return false;
+  if (err instanceof RangeError) return true;
+  const m = typeof err === 'string' ? err : (err.message || '');
+  return typeof m === 'string' && m.indexOf('Maximum call stack size exceeded') !== -1;
+}
+
+module.exports = { inspectPayload, safePreview, isStackOverflow, DEFAULT_MAX_DEPTH };

@@ -2,6 +2,7 @@ require('dotenv').config();
 var appRoot = require('app-root-path');
 var winston = require('winston');
 var { getContext } = require('./logContext');
+var { safePreview, isStackOverflow } = require('./payloadInspect');
 var level = process.env.LOG_LEVEL || "info";
 
 // Merge the per-execution context (bot/project/execution ids + current
@@ -55,19 +56,42 @@ logger.stream = {
   },
 };
 
+// On a "Maximum call stack size exceeded", the stack is pure axios internals
+// (the app frame is buried under ~10k recursion frames) so it tells us
+// nothing. The real context — which axios call and what payload triggered it
+// — is stashed in the log context by guardedAxios / DirWebRequestV2 right
+// before the call. Read it back here so the crash log carries the offending
+// URL + params/body (cycle-safe preview, so a circular payload shows its
+// shape and where the cycle is). bot_id/block/request_id are added by
+// injectContext.
+function overflowContext(err) {
+  if (!isStackOverflow(err)) return {};
+  try {
+    var ctx = getContext();
+    var last = ctx && ctx.axios_last;
+    if (!last) return { overflow_axios: 'no axios payload stashed (overflow outside a guarded axios call)' };
+    return {
+      overflow_axios_label: last.label || null,
+      overflow_axios_url: last.url || null,
+      overflow_axios_method: last.method || null,
+      overflow_payload_preview: safePreview(last.data, 6000),
+      overflow_params_preview: safePreview(last.params, 2000)
+    };
+  } catch (e) {
+    return { overflow_axios: 'context read failed: ' + ((e && e.message) || e) };
+  }
+}
+
 // Global crash handlers. We log these explicitly (instead of winston's
 // built-in handleExceptions) so the record is clean JSON carrying the full
-// stack trace — the built-in handler emitted a degraded, stack-less line,
-// especially on "Maximum call stack size exceeded". These fire outside any
-// bot execution, so there's no request context (no bot_id/block); the stack
-// is what locates the fault. exitOnError:false semantics are preserved: we
-// log and let the process keep running.
+// stack trace + (for stack overflows) the axios payload that caused it.
+// exitOnError:false semantics are preserved: we log and keep the process up.
 process.on('uncaughtException', function (err) {
   try {
-    logger.error('uncaughtException: ' + ((err && err.message) || err), {
+    logger.error('uncaughtException: ' + ((err && err.message) || err), Object.assign({
       err_type: 'uncaughtException',
       stack: (err && err.stack) || undefined
-    });
+    }, overflowContext(err)));
   } catch (e) {
     // Last resort if logging itself fails during the crash.
     console.error('uncaughtException (logger failed):', err && err.stack ? err.stack : err);
@@ -77,10 +101,10 @@ process.on('uncaughtException', function (err) {
 process.on('unhandledRejection', function (reason) {
   var e = reason instanceof Error ? reason : new Error(String(reason));
   try {
-    logger.error('unhandledRejection: ' + e.message, {
+    logger.error('unhandledRejection: ' + e.message, Object.assign({
       err_type: 'unhandledRejection',
       stack: e.stack
-    });
+    }, overflowContext(e)));
   } catch (err) {
     console.error('unhandledRejection (logger failed):', e.stack);
   }
