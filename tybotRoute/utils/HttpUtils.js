@@ -1,6 +1,7 @@
 let axios = require('axios');
 let https = require("https");
 const winston = require('./winston');
+const { guardedAxios } = require('./guardedAxios');
 
 class HttpUtils {
 
@@ -22,7 +23,7 @@ class HttpUtils {
       });
       axios_options.httpsAgent = httpsAgent;
     }
-    axios(axios_options)
+    guardedAxios(axios_options, "HttpUtils")
       .then((res) => {
         if (res && (res.status >= 200 && res.status <= 299) && res.data) {
           if (callback) {

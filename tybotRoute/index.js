@@ -3,6 +3,7 @@ const router = express.Router();
 const bodyParser = require('body-parser');
 const winston = require('./utils/winston.js')
 const logContext = require('./utils/logContext');
+const { guardedAxios } = require('./utils/guardedAxios');
 const { TiledeskClient } = require('@tiledesk/tiledesk-client');
 const { ExtApi } = require('./ExtApi.js');
 const { ExtUtil } = require('./ExtUtil.js');
@@ -992,14 +993,14 @@ function myrequest(options, callback) {
   winston.verbose("(tybotRoute) myrequest API URL:" + options.url);
   winston.debug("(tybotRoute) myrequest Options:", options);
 
-  axios(
+  guardedAxios(
     {
       url: options.url,
       method: options.method,
       data: options.json,
       params: options.params,
       headers: options.headers
-    })
+    }, "tybotRoute.myrequest")
     .then((res) => {
       winston.verbose("Response for url:" + options.url);
       winston.debug("Response headers:\n", res.headers);

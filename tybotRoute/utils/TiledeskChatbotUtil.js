@@ -7,6 +7,7 @@ const { Directives } = require('../tiledeskChatbotPlugs/directives/Directives.js
 require('dotenv').config();
 let axios = require('axios');
 const winston = require('./winston');
+const { guardedAxios } = require('./guardedAxios');
 
 const { CHANNEL_NAME } = require('./constants.js')
 
@@ -1066,14 +1067,14 @@ ${instructions}`
           winston.debug("(TiledeskChatbotUtil) myrequest API URL: " + options.url);
           winston.debug("(TiledeskChatbotUtil) myrequest Options URL: ", options);
         }
-        axios(
+        guardedAxios(
           {
             url: options.url,
             method: options.method,
             data: options.json,
             params: options.params,
             headers: options.headers
-          })
+          }, "TiledeskChatbotUtil.myrequest")
           .then((res) => {
             if (log) {
                 winston.debug("(TiledeskChatbotUtil) Response for url: " + options.url);

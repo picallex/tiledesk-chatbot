@@ -1,5 +1,6 @@
 let axios = require('axios');
 const winston = require('../utils/winston');
+const { guardedAxios } = require('../utils/guardedAxios');
 
 class WebhookChatbotPlug {
 
@@ -112,13 +113,13 @@ class WebhookChatbotPlug {
       winston.debug("(WebhookChatbotPlug) myrequest API URL:" + options.url);
       winston.debug("(WebhookChatbotPlug) myrequest Options:", options);
 
-    axios(
+    guardedAxios(
       {
         url: options.url,
         method: options.method,
         data: options.json,
         headers: options.headers
-      })
+      }, "WebhookChatbotPlug.myrequest")
     .then(function (res) {
 
         winston.debug("(WebhookChatbotPlug) myrequest Response for url:", options.url);

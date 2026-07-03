@@ -1,5 +1,6 @@
 let axios = require('axios');
 let https = require("https");
+const { guardedAxios } = require('../../utils/guardedAxios');
 const { Filler } = require('../Filler');
 const { TiledeskChatbot } = require('../../engine/TiledeskChatbot');
 const { TiledeskJSONEval } = require('../../TiledeskJSONEval');
@@ -142,7 +143,7 @@ class DirWebRequest {
       });
       axios_options.httpsAgent = httpsAgent;
     }
-    axios(axios_options)
+    guardedAxios(axios_options, "DirWebRequest")
     .then((res) => {
       if (res && res.status == 200 && res.data) {
         if (callback) {

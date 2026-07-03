@@ -1,4 +1,5 @@
 const axios = require("axios").default;
+const { guardedAxios } = require('../../utils/guardedAxios');
 const { TiledeskChatbot } = require("../../engine/TiledeskChatbot");
 const { Filler } = require("../Filler");
 const { DirIntent } = require("./DirIntent");
@@ -203,7 +204,7 @@ class DirCustomerio {
       });
       axios_options.httpsAgent = httpsAgent;
     }
-    axios(axios_options)
+    guardedAxios(axios_options, "DirCustomerio")
       .then((res) => {
         if (res && (res.status == 200 || res.status == 204) && (res.data || res.config.data)) {
           if (callback) {
