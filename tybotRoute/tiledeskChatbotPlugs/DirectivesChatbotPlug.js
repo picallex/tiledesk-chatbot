@@ -66,6 +66,7 @@ const { DirPicallexSfActivity } = require('./directives/DirPicallexSfActivity');
 const { DirPicallexSfUpdateObject } = require('./directives/DirPicallexSfUpdateObject');
 
 const winston = require('../utils/winston');
+const logContext = require('../utils/logContext');
 const { DirFlowLog } = require('./directives/DirFlowLog');
 const { DirAddKbContent } = require('./directives/DirAddKbContent');
 const { FlowExecutionStore } = require('../services/FlowExecutionStore');
@@ -450,6 +451,18 @@ class DirectivesChatbotPlug {
     }
 
     const directive_name = directive.name.toLowerCase();
+
+    // Track the current block so every log emitted while it runs (even
+    // deep ones like TiledeskExpression) carries which block failed.
+    const _blockCtx = {
+      block: directive.action && directive.action["_tdActionId"]
+        ? directive_name + ":" + directive.action["_tdActionId"]
+        : directive_name
+    };
+    if (this.executionId) {
+      _blockCtx.execution_id = this.executionId;
+    }
+    logContext.setContext(_blockCtx);
 
     // Controllo lock action
     if (directive.action) {

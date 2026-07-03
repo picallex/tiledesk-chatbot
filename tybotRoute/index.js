@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const bodyParser = require('body-parser');
 const winston = require('./utils/winston.js')
+const logContext = require('./utils/logContext');
 const { TiledeskClient } = require('@tiledesk/tiledesk-client');
 const { ExtApi } = require('./ExtApi.js');
 const { ExtUtil } = require('./ExtUtil.js');
@@ -61,6 +62,14 @@ async function resumeFlowExecution(doc) {
   if (!supportRequest || !Array.isArray(directives)) {
     throw new Error('FlowExecution snapshot missing supportRequest or directives');
   }
+
+  // Attach execution context to every log emitted during this resume.
+  logContext.enterWith({
+    bot_id: bot_id,
+    project_id: project_id,
+    execution_id: doc.execution_id,
+    request_id: supportRequest.request_id
+  });
 
   // Rehydrate parameters from the Mongo snapshot back into Redis BEFORE
   // any directive runs. Mongo is the durable source of truth; Redis is
@@ -151,6 +160,9 @@ router.post('/ext/:botid', async (req, res) => {
   const requestId = message.request.request_id;
   const projectId = message.id_project;
   winston.verbose("(tybotRoute) message.id_project: " + message.id_project)
+
+  // Attach execution context to every log while handling this request.
+  logContext.enterWith({ bot_id: botId, project_id: projectId, request_id: requestId });
 
   // adding info for internal context workflow
   message.request.bot_id = botId;
@@ -314,6 +326,9 @@ router.post('/exec/:botid', async (req, res) => {
   const requestId = message.request.request_id;
   const projectId = message.id_project;
   winston.verbose("(tybotRoute) message.id_project: " + message.id_project)
+
+  // Attach execution context to every log while handling this request.
+  logContext.enterWith({ bot_id: botId, project_id: projectId, request_id: requestId });
 
   // adding info for internal context workflow
   message.request.bot_id = botId;
