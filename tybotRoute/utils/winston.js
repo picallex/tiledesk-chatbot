@@ -23,7 +23,6 @@ var options = {
   file: {
     level:level ,
     filename: `${appRoot}/logs/app.log`,
-    handleExceptions: true,
     json: false,
     maxsize: 5242880, // 5MB
     maxFiles: 5,
@@ -32,7 +31,6 @@ var options = {
   },
   console: {
     level: level,
-    handleExceptions: true,
     // JSON so the log shipper (Vector) parses fields into columns in
     // OpenObserve (bot_id, project_id, execution_id, block, ...).
     format: winston.format.combine(
@@ -56,6 +54,37 @@ logger.stream = {
     logger.info(message);
   },
 };
+
+// Global crash handlers. We log these explicitly (instead of winston's
+// built-in handleExceptions) so the record is clean JSON carrying the full
+// stack trace — the built-in handler emitted a degraded, stack-less line,
+// especially on "Maximum call stack size exceeded". These fire outside any
+// bot execution, so there's no request context (no bot_id/block); the stack
+// is what locates the fault. exitOnError:false semantics are preserved: we
+// log and let the process keep running.
+process.on('uncaughtException', function (err) {
+  try {
+    logger.error('uncaughtException: ' + ((err && err.message) || err), {
+      err_type: 'uncaughtException',
+      stack: (err && err.stack) || undefined
+    });
+  } catch (e) {
+    // Last resort if logging itself fails during the crash.
+    console.error('uncaughtException (logger failed):', err && err.stack ? err.stack : err);
+  }
+});
+
+process.on('unhandledRejection', function (reason) {
+  var e = reason instanceof Error ? reason : new Error(String(reason));
+  try {
+    logger.error('unhandledRejection: ' + e.message, {
+      err_type: 'unhandledRejection',
+      stack: e.stack
+    });
+  } catch (err) {
+    console.error('unhandledRejection (logger failed):', e.stack);
+  }
+});
 
 
 module.exports = logger;
