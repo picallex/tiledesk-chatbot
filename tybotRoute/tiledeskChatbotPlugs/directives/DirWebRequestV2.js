@@ -172,7 +172,7 @@ class DirWebRequestV2 {
       return Promise.reject(err);
     });
 
-    let timeout = this.#webrequest_timeout(action, 20000, 1, 300000);
+    let timeout = this.#webrequest_timeout(action, 20000, 1, 600000);
 
     winston.debug("DirWebRequestV2 webRequest URL " + url);
 
@@ -504,7 +504,11 @@ class DirWebRequestV2 {
       return timeout;
     }
     if (action.settings.timeout) {
-      if ((typeof action.settings.timeout === "number") && action.settings.timeout > min && action.settings.timeout < max) {
+      // Inclusive bounds: a block configured at exactly `max` (e.g. 300000)
+      // must be honoured. The old `< max` rejected it and silently fell back
+      // to the 20s default, so slow calls (e.g. Dify ~18-26s) always timed
+      // out at 20s regardless of the configured timeout.
+      if ((typeof action.settings.timeout === "number") && action.settings.timeout >= min && action.settings.timeout <= max) {
         timeout = Math.round(action.settings.timeout)
       }
     }
