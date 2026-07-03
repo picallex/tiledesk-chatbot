@@ -460,38 +460,19 @@ class DirWebRequestV2 {
             }
             return;
           }
-          // FIX THE STRINGIFY OF CIRCULAR STRUCTURE BUG - END
+          // Extract only safe scalar fields from the error. Do NOT
+          // JSON.stringify(err): for an AxiosError that calls err.toJSON(),
+          // which serializes the whole config/request/response via axios's
+          // recursive toJSONObject — and THAT stack-overflows on the deep
+          // https.Agent/socket/request graph. It is the very "Maximum call
+          // stack size exceeded" crash we were chasing (the custom replacer
+          // below never helps: the overflow happens inside toJSON(), before
+          // the replacer runs).
           if (callback) {
-            let status = 1000;
-            let cache = [];
-            let str_error = JSON.stringify(err, function (key, value) { // try to use a separate function
-              if (typeof value === 'object' && value != null) {
-                if (cache.indexOf(value) !== -1) {
-                  return;
-                }
-                cache.push(value);
-              }
-              return value;
-            });
-            let error = JSON.parse(str_error) // "status" disappears without this trick
-            let errorMessage = JSON.stringify(error);
-            if (error.status) {
-              status = error.status;
-            }
-            if (error.message) {
-              errorMessage = error.message;
-            }
-            let data = null;
-            if (err.response) {
-              data = err.response.data;
-            }
-            callback(
-              null, {
-              status: status,
-              data: data,
-              error: errorMessage
-            }
-            );
+            const status = (err && err.response && typeof err.response.status === 'number') ? err.response.status : 1000;
+            const errorMessage = (err && err.message) ? String(err.message) : 'web request failed';
+            const data = (err && err.response) ? err.response.data : null;
+            callback(null, { status: status, data: data, error: errorMessage });
           }
         });
     }
