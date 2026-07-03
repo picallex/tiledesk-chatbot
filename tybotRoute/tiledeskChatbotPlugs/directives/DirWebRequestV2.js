@@ -8,6 +8,16 @@ const { Logger } = require('../../Logger');
 const { publishFlowError } = require('../FlowError');
 const { addBotIdHeader } = require('./BotIdHeader');
 
+// True for a "Maximum call stack size exceeded" error, however it reaches us
+// (RangeError instance or a message match — the message survives even when
+// the error object is otherwise stripped).
+function isStackOverflow(err) {
+  if (!err) return false;
+  if (err instanceof RangeError) return true;
+  const m = typeof err === 'string' ? err : (err.message || '');
+  return typeof m === 'string' && m.includes('Maximum call stack size exceeded');
+}
+
 // Max nesting depth we consider legitimate for a request payload. Beyond
 // this we treat it as pathological (axios's recursive serializer would risk
 // a stack overflow).
@@ -422,6 +432,18 @@ class DirWebRequestV2 {
           }
         })
         .catch((err) => {
+          // Stack-overflow during axios serialization (e.g. a payload the
+          // pre-check didn't flag) surfaces here as a RangeError. Handle it
+          // explicitly: the fragile JSON.stringify dance below can itself
+          // choke on such errors, and we want a clear, context-tagged log.
+          if (isStackOverflow(err)) {
+            const msg = "[Web Request] serialization overflow (Maximum call stack) for " + options.method + " " + options.url;
+            winston.error(msg, { web_request_error: 'stack_overflow', request_url: options.url, request_method: options.method, stack: err && err.stack });
+            if (callback) {
+              callback(null, { status: 1000, data: null, error: msg });
+            }
+            return;
+          }
           // FIX THE STRINGIFY OF CIRCULAR STRUCTURE BUG - END
           if (callback) {
             let status = 1000;
@@ -458,7 +480,24 @@ class DirWebRequestV2 {
         });
     }
     catch (error) {
-      winston.error("DirWebRequestV2 Error:", error);
+      // Synchronous throw while building/serializing the request (a
+      // stack-overflow can be thrown here before axios returns its promise).
+      // The old code only logged and never invoked the callback, so the flow
+      // hung until the route timeout. Always fail the block cleanly, and tag
+      // stack overflows so they're findable (block/bot_id come from context).
+      const overflow = isStackOverflow(error);
+      const msg = overflow
+        ? "[Web Request] serialization overflow (Maximum call stack) for " + options.method + " " + options.url
+        : "DirWebRequestV2 Error: " + ((error && error.message) ? error.message : error);
+      winston.error(msg, {
+        web_request_error: overflow ? 'stack_overflow' : 'request_error',
+        request_url: options && options.url,
+        request_method: options && options.method,
+        stack: error && error.stack
+      });
+      if (callback) {
+        callback(null, { status: 1000, data: null, error: msg });
+      }
     }
   }
 
