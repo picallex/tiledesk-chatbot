@@ -660,6 +660,33 @@ router.post('/echobot', (req, res) => {
   });
 });
 
+// Extra time granted on top of the block's own request timeouts, to cover
+// the non-HTTP flow overhead (Redis, expression eval, publishing the Web
+// Response). The sync webhook must outlive the block's slowest possible run.
+const SYNC_TIMEOUT_MARGIN_MS = 15000;
+
+// The sync webhook (automations) must wait as long as the invoked block can
+// legitimately take, honouring the per-request timeout configured on each
+// Web Request in that block (Settings tab). We sum the block's webrequestv2
+// timeouts (requests run sequentially) + a margin, and never wait less than
+// the default. Same clamps as DirWebRequestV2#webrequest_timeout.
+function blockSyncTimeoutMs(intent, floorMs) {
+  try {
+    if (!intent || !Array.isArray(intent.actions)) return floorMs;
+    let sum = 0;
+    for (const a of intent.actions) {
+      if (a && a._tdActionType === 'webrequestv2') {
+        const t = a.settings && a.settings.timeout;
+        sum += (typeof t === 'number' && t > 0 && t <= 300000) ? Math.round(t) : 20000;
+      }
+    }
+    if (sum <= 0) return floorMs;
+    return Math.max(floorMs, sum + SYNC_TIMEOUT_MARGIN_MS);
+  } catch (e) {
+    return floorMs;
+  }
+}
+
 router.post('/block/:project_id/:bot_id/:block_id', async (req, res) => {
 
   const project_id = req.params.project_id;
@@ -724,7 +751,20 @@ router.post('/block/:project_id/:bot_id/:block_id', async (req, res) => {
     // diagnostic body. After WEBHOOK_SYNC_TIMEOUT_MS we unsubscribe and return
     // 502 with any `flowError` the flow recorded. Successful responses are
     // unaffected — the listener fires first and clears the timer.
-    const SYNC_TIMEOUT_MS = Number(process.env.WEBHOOK_SYNC_TIMEOUT_MS) || 30000;
+    // Base timeout (floor). The invoked block may configure longer per-request
+    // timeouts (e.g. 10 min on a Web Request); honour those so a legitimately
+    // slow automation isn't cut short.
+    let SYNC_TIMEOUT_MS = Number(process.env.WEBHOOK_SYNC_TIMEOUT_MS) || 30000;
+    if (!staticBots) {
+      try {
+        const timeoutBotsDS = new MongodbBotsDataSource({ projectId: project_id, botId: bot_id });
+        const invokedBlock = await timeoutBotsDS.getByIntentDisplayName(bot_id, "#" + block_id);
+        SYNC_TIMEOUT_MS = blockSyncTimeoutMs(invokedBlock, SYNC_TIMEOUT_MS);
+      } catch (e) {
+        winston.warn("(tybotRoute) could not resolve block timeout for " + block_id + ", using default: " + ((e && e.message) || e));
+      }
+    }
+    winston.verbose("(tybotRoute) sync webhook timeout for block " + block_id + ": " + SYNC_TIMEOUT_MS + "ms");
     let settled = false;
     let timeoutHandle = null;
 
