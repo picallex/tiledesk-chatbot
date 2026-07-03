@@ -225,7 +225,10 @@ class TiledeskExpression {
         },
         "JSONparse": {
             name: "JSONparse",
-            applyPattern: "JSON.parse(String(#1))"
+            // Empty input (e.g. a variable filled from a missing/empty web
+            // response) parses to {} instead of throwing "Unexpected end of
+            // JSON input" and aborting the block.
+            applyPattern: "JSON.parse(String(#1) || \"{}\")"
         },
         "JSONstringify": {
             name: "JSONstringify",
