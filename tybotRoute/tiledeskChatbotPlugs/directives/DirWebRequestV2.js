@@ -8,6 +8,47 @@ const { Logger } = require('../../Logger');
 const { publishFlowError } = require('../FlowError');
 const { addBotIdHeader } = require('./BotIdHeader');
 
+// Max nesting depth we consider legitimate for a request payload. Beyond
+// this we treat it as pathological (axios's recursive serializer would risk
+// a stack overflow).
+const PAYLOAD_MAX_DEPTH = 200;
+
+// Detect payloads that would make axios's serializer recurse forever (a
+// circular reference — e.g. a whole API response stored in a bot variable
+// and re-sent) or blow the stack (pathological depth). Those otherwise
+// surface as an uncatchable "Maximum call stack size exceeded"
+// unhandledRejection that crashes the process. This walk is itself bounded
+// (it stops at the first cycle and at PAYLOAD_MAX_DEPTH), so it can never
+// overflow while checking. Returns { ok:true } or { ok:false, reason, path }.
+function inspectPayload(root) {
+  const ancestors = new WeakSet();
+  let bad = null;
+  function walk(value, path, depth) {
+    if (bad) return;
+    if (value === null || typeof value !== 'object') return;
+    if (ancestors.has(value)) { bad = { reason: 'circular', path: path || '<root>' }; return; }
+    if (depth > PAYLOAD_MAX_DEPTH) { bad = { reason: 'too-deep', path: path || '<root>' }; return; }
+    ancestors.add(value);
+    if (Array.isArray(value)) {
+      for (let i = 0; i < value.length && !bad; i++) {
+        walk(value[i], path + '[' + i + ']', depth + 1);
+      }
+    } else {
+      const keys = Object.keys(value);
+      for (let i = 0; i < keys.length && !bad; i++) {
+        walk(value[keys[i]], path ? path + '.' + keys[i] : keys[i], depth + 1);
+      }
+    }
+    ancestors.delete(value); // keep only ancestors in the set → detects true cycles, not shared refs
+  }
+  try {
+    walk(root, '', 0);
+  } catch (e) {
+    return { ok: true }; // never let the guard itself break the request path
+  }
+  return bad ? { ok: false, reason: bad.reason, path: bad.path } : { ok: true };
+}
+
 class DirWebRequestV2 {
 
   constructor(context) {
@@ -345,6 +386,33 @@ class DirWebRequestV2 {
           rejectUnauthorized: false,
         });
         axios_options.httpsAgent = httpsAgent;
+      }
+
+      // Guard the request payload before axios serializes it. A circular /
+      // pathologically-deep body or params makes axios recurse until it
+      // throws "Maximum call stack size exceeded" as an uncatchable
+      // unhandledRejection that kills the process. Detect it here, log the
+      // offending key (block/bot_id/request_id come from the log context),
+      // and fail the block cleanly via the normal error callback instead.
+      const dataCheck = inspectPayload(axios_options.data);
+      const paramsCheck = dataCheck.ok ? inspectPayload(axios_options.params) : dataCheck;
+      const badCheck = !dataCheck.ok
+        ? { where: 'data', reason: dataCheck.reason, path: dataCheck.path }
+        : (!paramsCheck.ok ? { where: 'params', reason: paramsCheck.reason, path: paramsCheck.path } : null);
+      if (badCheck) {
+        const offendingKey = badCheck.where + '.' + badCheck.path;
+        const msg = "[Web Request] payload not serializable (" + badCheck.reason
+          + ") at " + offendingKey + " for " + options.method + " " + options.url;
+        winston.error(msg, {
+          web_request_error: badCheck.reason,
+          offending_key: offendingKey,
+          request_url: options.url,
+          request_method: options.method
+        });
+        if (callback) {
+          callback(null, { status: 1000, data: null, error: msg });
+        }
+        return;
       }
 
       axios(axios_options)
