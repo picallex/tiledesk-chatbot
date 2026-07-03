@@ -1,4 +1,9 @@
 require('dotenv').config();
+// Capture deeper stacks. The default of 10 frames shows only the innermost
+// axios recursion on a "Maximum call stack size exceeded" and hides where it
+// was actually called from / what recursed. 100 frames reveals the pattern
+// (axios-internal vs bot-engine recursion) without bloating normal logs.
+Error.stackTraceLimit = 100;
 var appRoot = require('app-root-path');
 var winston = require('winston');
 var { getContext } = require('./logContext');

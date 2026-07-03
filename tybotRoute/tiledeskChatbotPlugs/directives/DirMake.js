@@ -204,34 +204,15 @@ class DirMake {
 
       })
       .catch((err) => {
-        // FIX THE STRINGIFY OF CIRCULAR STRUCTURE BUG - END;
+        // Extract only safe scalar fields. Do NOT JSON.stringify(err): an
+        // AxiosError's toJSON serializes the whole config/request/response
+        // via axios's recursive walker, which stack-overflows on the deep
+        // agent/socket/request graph ("Maximum call stack size exceeded").
         if (callback) {
-          let status = 1000;
-          let cache = [];
-          let str_error = JSON.stringify(err, function (key, value) { // try to use a separate function
-            if (typeof value === 'object' && value != null) {
-              if (cache.indexOf(value) !== -1) {
-                return;
-              }
-              cache.push(value);
-            }
-            return value;
-          });
-          let error = JSON.parse(str_error) // "status" disappears without this trick
-          let errorMessage = JSON.stringify(error);
-          if (error.status) {
-            status = error.status;
-          }
-          if (error.message) {
-            errorMessage = error.message;
-          }
-          callback(
-            null, {
-            status: status,
-            data: null,
-            error: errorMessage
-          }
-          );
+          const status = (err && err.response && typeof err.response.status === 'number') ? err.response.status : 1000;
+          const errorMessage = (err && err.message) ? String(err.message) : 'web request failed';
+          const data = (err && err.response) ? err.response.data : null;
+          callback(null, { status: status, data: data, error: errorMessage });
         }
       });
   }
