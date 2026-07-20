@@ -161,14 +161,18 @@ class DirGptResponse {
       }
     }
 
-    let inputPayload = filled_prompt;
-    if (action.promptType === 'json' && typeof filled_prompt === 'string') {
+    let inputPayload;
+    if (action.promptType === 'json' && this.#hasPromptJson(action.promptJson)) {
+      inputPayload = this.#buildJsonInput(action.promptJson, filler, requestVariables);
+    } else if (action.promptType === 'json' && typeof filled_prompt === 'string') {
+      inputPayload = filled_prompt;
       try {
-        inputPayload = JSON.parse(filled_prompt);
+        inputPayload = JSON.stringify(JSON.parse(filled_prompt));
       } catch (error) {
-        // Keep backward compatibility: if parsing fails, send the raw string.
-        winston.warn("(DirGptResponse) promptType=json but prompt is not valid JSON. Sending raw prompt string.");
+        winston.warn("(DirGptResponse) promptType=json but prompt is not valid JSON and no promptJson map present. Sending raw prompt string.");
       }
+    } else {
+      inputPayload = filled_prompt;
     }
 
     let json = { input: inputPayload };
@@ -299,6 +303,25 @@ class DirGptResponse {
       winston.error("(DirGptResponse) Error extracting response text: ", e);
       return "No answer.";
     }
+  }
+
+  #hasPromptJson(promptJson) {
+    return !!promptJson
+      && typeof promptJson === 'object'
+      && !Array.isArray(promptJson)
+      && Object.keys(promptJson).length > 0;
+  }
+
+  #buildJsonInput(promptJson, filler, requestVariables) {
+    const filledJson = {};
+    for (const [key, value] of Object.entries(promptJson)) {
+      filledJson[key] = (typeof value === 'string')
+        ? filler.fill(value, requestVariables)
+        : value;
+    }
+    const jsonString = JSON.stringify(filledJson);
+    winston.debug("(DirGptResponse) built JSON input from promptJson (field-by-field, escaped): " + jsonString);
+    return jsonString;
   }
 
   async #createConversation(openai_base, key) {
