@@ -102,6 +102,39 @@ se crea un flujo nuevo (ver "Agregar un tipo de flujo").
 Exit code `0` si todos los escenarios alcanzan el umbral, `1` si alguno falla
 (útil para CI).
 
+## Comandos
+
+Se corre desde `tiledesk-chatbot/e2e/` con `node run.js` + flags. Requiere
+`OPENAI_API_KEY` exportada (salvo `--list` / `--flows`, que solo leen archivos).
+
+| Comando | Qué hace |
+|---|---|
+| `node run.js` | Flujo por defecto, **todos** sus escenarios, 5 corridas c/u, flujo publicado, concurrencia 2. |
+| `node run.js --flows` | Lista los **tipos de flujo** disponibles (carpetas en `flows/`). No corre nada. |
+| `node run.js --list` | Lista los **escenarios** del flujo seleccionado. No corre nada. |
+| `node run.js --flow <tipo>` | Elige el **tipo de flujo** (default `schedule-appointment`). |
+| `node run.js --project <id> --bot <id>` | Corre contra **otro bot del mismo tipo** (sobrescribe los defaults del flow). |
+| `node run.js --scenario <texto>` | Filtra escenarios cuyo id **contenga** `<texto>` (ej. `reclamo`). |
+| `node run.js --runs <N>` | **Corridas por escenario** (default 5). Más runs = más señal estadística. |
+| `node run.js --threshold <0-1>` | **Tasa mínima de éxito** por escenario para PASS (default `0.8`). |
+| `node run.js --concurrency <N>` | Conversaciones en **paralelo** (default 2). |
+| `node run.js --draft` | Prueba el flujo **DRAFT** (lo que editás en CDS) en vez del publicado. |
+| `node run.js --debug` | Log **detallado turno a turno**. |
+
+Los flags se combinan. Ejemplos:
+
+```bash
+node run.js --scenario reclamo --runs 3 --debug        # 1 escenario, 3 corridas, con detalle
+node run.js --runs 2 --concurrency 4                   # pasada rápida (menos runs, más paralelo)
+node run.js --flow schedule-appointment --draft        # el flujo en edición (draft)
+node run.js --project <projId> --bot <botId> --runs 3  # otro bot del mismo tipo
+node run.js --threshold 1                              # exigir 100% (más estricto)
+```
+
+Todo también por variable de entorno (útil para CI): `E2E_FLOW`, `E2E_PROJECT_ID`,
+`E2E_BOT_ID`, `E2E_RUNS`, `E2E_THRESHOLD`, `E2E_CONCURRENCY`, `E2E_DRAFT`,
+`E2E_SIM_MODEL` (ver tabla en "Variables de entorno").
+
 ## Cómo funciona
 
 1. `POST /api/auth/signinAnonymously` → token de visitante anónimo.
