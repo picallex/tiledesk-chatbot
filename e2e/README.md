@@ -9,12 +9,75 @@ veces y se exige una **tasa de éxito ≥ umbral** (no un pass/fail binario).
 
 ## Requisitos
 
-- El stack de dev corriendo (proxy en `http://localhost:8090`).
-- Node 18+ (usa `fetch` nativo; **sin dependencias npm**).
-- Una API key de OpenAI para el cliente simulado:
-  ```bash
-  export OPENAI_API_KEY=sk-...
-  ```
+- Docker + el stack de dev de Tiledesk (`tiledesk-main/build/dev`).
+- Node 18+ en tu máquina (la suite corre en el **host**; usa `fetch` nativo, **sin deps npm**).
+- API key de OpenAI (para el cliente simulado).
+
+## Puesta en marcha (paso a paso)
+
+Se hace una vez. El **bot corre en el contenedor** `chatbot`; la **suite corre en el host**.
+
+### 1. Código del bot con el fix + la suite
+
+El repo `tiledesk-chatbot` debe estar en un commit que incluya:
+- el fix de `input` JSON en `DirGptResponse` (PR #40, ya en `main`), y
+- la carpeta `e2e/` (PR #41).
+
+Con `main` actualizado (`git pull`) alcanza.
+
+### 2. Levantar el stack de dev
+
+```bash
+cd tiledesk/tiledesk-main/build/dev
+docker compose up -d --build
+```
+La app queda en `http://localhost:8090` (dashboard en `/dashboard`, CDS en `/cds/`).
+
+### 3. Activar el mock del POST a `preleads/label` (para NO tocar el CRM)
+
+Cada arista terminal del flujo hace `POST https://api.picallex.com/whatsapp/preleads/label`.
+La suite trae un preload (`mock-outbound.js`) que lo intercepta. Recomiendo activarlo con un
+**`docker-compose.override.yml` local** en `build/dev/` (así el `docker-compose.yml` versionado queda limpio):
+
+```yaml
+services:
+  chatbot:
+    # monta la suite en el contenedor (permite editar escenarios sin rebuild)
+    volumes:
+      - ../../../tiledesk-chatbot/e2e:/usr/src/app/e2e:ro
+    environment:
+      - LOG_LEVEL=debug                                            # opcional: logs del bot
+      - NODE_OPTIONS=--require /usr/src/app/e2e/mock-outbound.js   # activa el mock
+      - MOCK_PRELEADS_LABEL=1
+```
+
+Recreá el contenedor y verificá:
+```bash
+docker compose up -d --no-deps chatbot
+docker exec chatbot printenv MOCK_PRELEADS_LABEL          # -> 1
+docker compose logs --tail=40 chatbot | grep mock-outbound  # -> "[mock-outbound] active ..."
+```
+
+> ⚠️ `NODE_OPTIONS=--require .../mock-outbound.js` exige que el archivo exista en el contenedor;
+> el volumen de arriba lo garantiza. Para **desactivar** el mock, quitá el override (o sus env).
+> Alternativa: poner esas 3 env directo en el servicio `chatbot` del `docker-compose.yml`.
+
+### 4. Obtener la API key de OpenAI
+
+Panel → **Configuración del proyecto → Integraciones → OpenAI → API Key**. Exportala en la
+terminal donde vas a correr la suite:
+```bash
+export OPENAI_API_KEY=sk-...
+```
+
+### 5. Correr la suite
+
+```bash
+cd tiledesk/tiledesk-chatbot/e2e
+node run.js
+```
+Salida: tabla en la terminal + carpeta `results/<timestamp>/` (`summary.txt`, `report.json`,
+un transcript por conversación). Exit code `0`/`1` según el umbral (sirve para CI).
 
 ## Uso
 
