@@ -1,12 +1,13 @@
-// Varied E2E scenarios. Each scenario defines a customer persona/goal and the
-// terminal reason(s) the flow is expected to end with. Responses are
-// non-deterministic, so each scenario is run N times and judged by success rate.
+// Escenarios del tipo de flujo "schedule-appointment" (calificación de lead + disposición
+// de llamada: CONTACTAR YA / LLAMAR MAS TARDE / NO MOLESTAR / RECLAMO).
 //
-// expected: array of acceptable `motivo` values (the conversation must finalize
-//           with one of them). Use [] for "should NOT terminate" style checks.
-// payload:  optional per-scenario override of the {{payload.message.*}} flow vars
-//           (merged over config.messagePayload). Use it to vary conversationName /
-//           preLeadId, e.g. to test name extraction with different nicknames.
+// Cada escenario define una persona/objetivo del cliente y la(s) arista(s) terminal(es)
+// esperada(s). Como las respuestas son no deterministas, cada uno se corre N veces y se
+// juzga por tasa de éxito.
+//
+// expected: motivos aceptables (la conversación debe cerrar con uno de ellos).
+// payload:  override opcional por escenario de las vars {{payload.message.*}}
+//           (se mergea sobre flow.messagePayload).
 
 const scenarios = [
   {

@@ -135,55 +135,44 @@ function parseOutcomeFromString(s) {
   return null;
 }
 
-const FINISH_SENTINEL = '--FINISH--';
-
-// Terminal block/intent name -> motivo. Lets us recover the edge even when the
-// terminal turn's message doesn't carry the parsed OpenAI JSON (e.g. it closed via
-// the --FINISH-- sentinel, or via the "Error en respuesta" branch).
-const INTENT_TO_MOTIVO = {
-  'contactar ya': 'CONTACTAR YA',
-  'llamar mas tarde': 'LLAMAR MAS TARDE',
-  'no molestar': 'NO MOLESTAR',
-  'reclamo': 'RECLAMO',
-  'cliente escribe': 'CLIENTE ESCRIBE',
-  'error en respuesta': 'ERROR EN RESPUESTA',
-};
+// Terminal detection is flow-specific and provided by the flow adapter
+// (flows/<flow>/flow.js → detection). Defaults keep the functions usable standalone.
+//   detection.resultAttribute → flowAttributes key holding {finalizar, motivo, respuesta}
+//   detection.finishSentinel  → message text that marks the flow closing
+//   detection.intentToMotivo  → terminal block/intent name → motivo (edge inference)
+const DEFAULT_DETECTION = { resultAttribute: 'respuestaAIExito', finishSentinel: '--FINISH--', intentToMotivo: {} };
 const norm = (s) => (s || '').toString().trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 
-function outcomeFromMessage(m) {
+function outcomeFromMessage(m, detection = DEFAULT_DETECTION) {
+  const resultAttr = detection.resultAttribute || 'respuestaAIExito';
+  const sentinel = detection.finishSentinel || '--FINISH--';
+  const map = detection.intentToMotivo || {};
   const attrs = m.attributes || {};
   const fa = attrs.flowAttributes || {};
-  // Authoritative: the raw OpenAI JSON the flow stored (respuestaAIExito), then
-  // other raw variants, then the message text.
-  const o = parseOutcomeFromString(fa.respuestaAIExito)
+  // Authoritative: the raw OpenAI JSON the flow stored, then other raw variants, then text.
+  const o = parseOutcomeFromString(fa[resultAttr])
     || parseOutcomeFromString(attrs._raw_message)
     || parseOutcomeFromString(m.text);
   let finalizar = o ? o.finalizar : (fa.finalizar === true || fa.finalizar === 'true');
   let motivo = (o && o.motivo) || (fa.motivo || '').toString().trim();
   const intent = attrs.intentName || attrs?.intent_info?.intent_name || null;
-  const finish = typeof m.text === 'string' && m.text.trim() === FINISH_SENTINEL;
-  // Reinforcement: terminal-ish turn without a captured motivo -> infer from the
-  // executing block/intent name so the report shows the real edge (not "(sin motivo)").
+  const finish = typeof m.text === 'string' && m.text.trim() === sentinel;
+  // Terminal-ish turn without a captured motivo → infer the edge from the block/intent
+  // name so the report shows the real edge (not "(sin motivo)").
   if ((finish || finalizar) && !motivo && intent) {
-    const mapped = INTENT_TO_MOTIVO[norm(intent)];
+    const mapped = map[norm(intent)];
     if (mapped) { motivo = mapped; finalizar = true; }
   }
-  return {
-    finalizar: !!finalizar,
-    motivo,
-    intent,
-    finish,
-    source: o ? 'raw' : (motivo ? 'intent' : 'none'),
-  };
+  return { finalizar: !!finalizar, motivo, intent, finish, source: o ? 'raw' : (motivo ? 'intent' : 'none') };
 }
 
 // Inspect a collected bot turn: did the flow reach a terminal reason this turn?
-function detectTurnOutcome(botMessages) {
+function detectTurnOutcome(botMessages, detection = DEFAULT_DETECTION) {
   let terminal = null;
   let finish = false;
   const intents = [];
   for (const m of botMessages) {
-    const o = outcomeFromMessage(m);
+    const o = outcomeFromMessage(m, detection);
     if (o.intent) intents.push(o.intent);
     if (o.finish) finish = true;
     if (o.finalizar || (o.motivo && o.motivo.length)) terminal = o;
@@ -194,8 +183,9 @@ function detectTurnOutcome(botMessages) {
 }
 
 // A control/sentinel message that must not be shown to the simulated user.
-function isControlMessage(m) {
-  return typeof m.text === 'string' && m.text.trim() === FINISH_SENTINEL;
+function isControlMessage(m, detection = DEFAULT_DETECTION) {
+  const sentinel = (detection && detection.finishSentinel) || '--FINISH--';
+  return typeof m.text === 'string' && m.text.trim() === sentinel;
 }
 
 module.exports = { TiledeskDriver, detectTurnOutcome, outcomeFromMessage, parseOutcomeFromString, isControlMessage, sleep };

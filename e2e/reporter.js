@@ -15,7 +15,8 @@ function pad(s, n) { s = String(s); return s.length >= n ? s : s + ' '.repeat(n 
 
 function buildSummary({ config, list, outcomes }) {
   const lines = [];
-  lines.push(`Suite E2E — bot ${config.botId} @ ${config.baseUrl}  (flujo: ${config.draft ? 'DRAFT' : 'PUBLICADO'})`);
+  lines.push(`Suite E2E — flujo "${config.flowId}"${config.flowLabel ? ' (' + config.flowLabel + ')' : ''}`);
+  lines.push(`Bot ${config.botId} · proyecto ${config.projectId} · ${config.draft ? 'DRAFT' : 'PUBLICADO'} @ ${config.baseUrl}`);
   lines.push(`Escenarios: ${list.length} · runs c/u: ${config.runs} · umbral: ${Math.round(config.threshold * 100)}% · modelo sim: ${config.sim.model}`);
   lines.push('');
   lines.push(pad('Escenario', 30) + pad('runs', 6) + pad('éxito', 7) + pad('tasa', 7) + 'detalle');
@@ -75,6 +76,7 @@ function writeReport(dir, { config, list, outcomes, startedAt }) {
     startedAt,
     finishedAt: new Date().toISOString(),
     config: {
+      flowId: config.flowId, flowLabel: config.flowLabel,
       baseUrl: config.baseUrl, projectId: config.projectId, botId: config.botId,
       draft: config.draft, runs: config.runs, threshold: config.threshold, simModel: config.sim.model,
     },

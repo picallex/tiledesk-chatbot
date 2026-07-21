@@ -85,12 +85,19 @@ un transcript por conversación). Exit code `0`/`1` según el umbral (sirve para
 cd tiledesk-chatbot/e2e
 
 node run.js                              # todos los escenarios (flujo PUBLICADO)
-node run.js --list                       # lista escenarios y sale
+node run.js --flows                      # lista los tipos de flujo disponibles
+node run.js --list                       # lista escenarios del flujo seleccionado
+node run.js --flow schedule-appointment         # elegir tipo de flujo (default: schedule-appointment)
+node run.js --project <projId> --bot <botId>   # correr contra OTRO bot del mismo tipo
 node run.js --scenario reclamo           # solo los que matcheen "reclamo"
 node run.js --runs 10 --threshold 0.7    # 10 corridas c/u, umbral 70%
 node run.js --draft                      # probar el flujo DRAFT (lo que editás en CDS)
 node run.js --debug                      # log detallado turno a turno
 ```
+
+El **driver es genérico**: para testear otro bot **del mismo tipo de flujo**, pasá
+`--project`/`--bot` (o `E2E_PROJECT_ID`/`E2E_BOT_ID`). Para un **tipo de bot distinto**,
+se crea un flujo nuevo (ver "Agregar un tipo de flujo").
 
 Exit code `0` si todos los escenarios alcanzan el umbral, `1` si alguno falla
 (útil para CI).
@@ -104,19 +111,28 @@ Exit code `0` si todos los escenarios alcanzan el umbral, `1` si alguno falla
    `GET /api/<project>/requests/<req>/messages` hasta la respuesta del bot.
 4. El **cliente LLM** (`simulated-user.js`) lee lo que dijo el bot y responde según
    la persona del escenario, hasta que el flujo termina.
-5. La **arista** se detecta de forma determinista desde
-   `attributes.flowAttributes.respuestaAIExito` (el JSON `{finalizar, motivo, respuesta}`
-   del Chat Prompt) y el mensaje centinela `--FINISH--` que emite el flujo al cerrar.
+5. La **arista** se detecta según la config del flujo (`flow.detection`): el atributo
+   de `flowAttributes` con el JSON `{finalizar, motivo, respuesta}`, el centinela de
+   cierre, y un mapeo bloque/intent → motivo.
 
-## Archivos
+## Estructura
+
+El **core es genérico** (no depende del bot); lo específico de cada tipo de bot vive
+en `flows/<tipo>/`.
 
 | Archivo | Rol |
 |---|---|
-| `config.js` | Configuración (todo overridable por env). |
-| `scenarios.js` | Los casos de test (persona + motivo esperado). **Editá acá para agregar casos.** |
-| `driver.js` | Driver HTTP (signin, enviar, pollear) + detección de arista. |
+| `run.js` | Runner genérico: elige flujo, corre escenarios × N, agrega y reporta. |
+| `driver.js` | Driver HTTP genérico (signin, enviar, pollear) + detección **parametrizable**. |
 | `simulated-user.js` | Cliente LLM que interpreta la persona. |
-| `run.js` | Orquestador: corre escenarios × N, agrega y reporta. |
+| `reporter.js` | Terminal + `report.json` + `summary.txt` + un transcript por conversación. |
+| `config.js` | Config genérica (todo por env). |
+| `mock-outbound.js` | Preload que mockea salientes (ver abajo). |
+| `flows/<tipo>/flow.js` | **Adapter del tipo de bot**: defaults de proyecto/bot, detección, `messagePayload`, mock y escenarios. |
+| `flows/<tipo>/scenarios.js` | Escenarios de ese tipo de flujo. **Editá acá para agregar casos.** |
+
+Flujo incluido: **`schedule-appointment`** — calificación de lead + disposición de llamada
+(`CONTACTAR YA` / `LLAMAR MAS TARDE` / `NO MOLESTAR` / `RECLAMO`).
 
 ## Variables de entorno
 
@@ -124,23 +140,25 @@ Exit code `0` si todos los escenarios alcanzan el umbral, `1` si alguno falla
 |---|---|---|
 | `OPENAI_API_KEY` | — | **Requerida.** Key para el cliente simulado. |
 | `E2E_BASE_URL` | `http://localhost:8090/api` | Base del server. |
-| `E2E_PROJECT_ID` | `6a16f36e359f3a001200357b` | Proyecto. |
-| `E2E_BOT_ID` | `6a16f3b0359f3a00120035c6` | Bot. |
+| `E2E_FLOW` | `schedule-appointment` | Tipo de flujo (carpeta en `flows/`). También `--flow`. |
+| `E2E_PROJECT_ID` | *(default del flow)* | Proyecto. También `--project`. |
+| `E2E_BOT_ID` | *(default del flow)* | Bot. También `--bot`. |
 | `E2E_DRAFT` | `false` | `true` = flujo draft. |
 | `E2E_RUNS` | `5` | Corridas por escenario. |
 | `E2E_THRESHOLD` | `0.8` | Tasa mínima de éxito. |
 | `E2E_MAX_TURNS` | `10` | Tope de turnos por conversación. |
 | `E2E_CONCURRENCY` | `2` | Conversaciones en paralelo. |
 | `E2E_SIM_MODEL` | `gpt-4.1-mini` | Modelo del cliente simulado. |
-| `E2E_CONVERSATION_NAME` | `Jorge 😊` | Valor de `{{payload.message.conversationName}}`. |
-| `E2E_PRELEAD_ID` | `` (vacío) | Valor de `{{payload.message.preLeadId}}`. Ver nota Salesforce. |
+| `E2E_CONVERSATION_NAME` | `Jorge 👨🏾‍🦲` | (flujo `schedule-appointment`) `{{payload.message.conversationName}}`. |
+| `E2E_PRELEAD_ID` | `` (vacío) | (flujo `schedule-appointment`) `{{payload.message.preLeadId}}`. Ver nota Salesforce. |
 
 ## Variables del flujo `{{payload.message.*}}`
 
-`conversationName` y `preLeadId` **no** son campos de plataforma: son variables custom
-del flujo. El engine las lee de `message.attributes.payload.message.*`. La suite las
-inyecta automáticamente (`config.messagePayload`), y cada escenario puede sobrescribirlas
-con su campo `payload`, por ejemplo para variar el nickname que ve el extractor de nombre:
+En el flujo `schedule-appointment`, `conversationName` y `preLeadId` **no** son campos de
+plataforma: son variables custom que el engine lee de `message.attributes.payload.message.*`.
+La suite las inyecta desde `flow.messagePayload` (en `flows/schedule-appointment/flow.js`), y cada
+escenario puede sobrescribirlas con su campo `payload`, por ejemplo para variar el nickname
+que ve el extractor de nombre:
 
 ```js
 { id: 'x', persona: '...', expected: ['CONTACTAR YA'],
@@ -174,17 +192,37 @@ del chatbot vas a ver por cada cierre:
 ```
 Para desactivarlo, sacá esas env vars (el módulo queda inerte aunque siga presente).
 
-## Agregar un escenario
+## Agregar un escenario (a un flujo existente)
 
-Editá `scenarios.js`:
+Editá `flows/<tipo>/scenarios.js`:
 
 ```js
 {
   id: 'mi-caso',
   persona: 'Describí al cliente y su objetivo (en qué termina).',
   expected: ['LLAMAR MAS TARDE'],   // motivo(s) válido(s) para dar éxito
+  // payload: { conversationName: '...', preLeadId: '...' }   // opcional
 }
 ```
+
+## Agregar un tipo de flujo nuevo (otro bot distinto)
+
+El driver/cliente/reporte no se tocan. Creás una carpeta nueva en `flows/`:
+
+1. `flows/<nuevo-tipo>/scenarios.js` — las personas + `expected` de ese bot.
+2. `flows/<nuevo-tipo>/flow.js` — el adapter:
+   - `defaults.projectId` / `defaults.botId` del bot de referencia,
+   - `opener` (primer mensaje),
+   - `messagePayload` (las `{{payload.message.*}}` que consuma, si aplica),
+   - `detection`: `{ resultAttribute, finishSentinel, intentToMotivo }` — **cómo cierra
+     ese flujo** (qué atributo trae el resultado, qué mensaje marca el fin, y el mapeo
+     bloque/intent → arista),
+   - `mockMatch` (saliente a mockear, si aplica),
+   - `scenarios`.
+3. Corrés: `node run.js --flow <nuevo-tipo>`.
+
+> Lo único realmente específico es `detection`: define cómo ese bot señala su cierre.
+> Si el bot nuevo usa las mismas convenciones que `schedule-appointment`, copiá su `detection`.
 
 ## Nota
 
