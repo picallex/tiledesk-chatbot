@@ -9,6 +9,7 @@ const winston = require('../../utils/winston');
 const integrationService = require("../../services/IntegrationService");
 const { Logger } = require("../../Logger");
 const { addBotIdHeader } = require("./BotIdHeader");
+const { fillLeadId } = require("./PicallexLeadId");
 
 const PICALLEX_ENDPOINT = process.env.PICALLEX_ENDPOINT || "https://crm.picallex.com";
 
@@ -77,7 +78,19 @@ class DirPicallexCallLead {
     }
 
     // Build request body
-    const leadId = filler.fill("{{attributes.lead.id}}", requestVariables);
+    const leadId = fillLeadId(filler, requestVariables);
+    if (leadId === null) {
+      this.logger.error("[PicallEx CallLead] lead id not found in the request context");
+      let errorMsg = "PicallEx CallLead Error: lead id is missing or not numeric";
+      await this.#assignAttributes(action, null, errorMsg);
+      if (falseIntent) {
+        await this.#executeCondition(false, trueIntent, trueIntentAttributes, falseIntent, falseIntentAttributes);
+        callback(true);
+        return;
+      }
+      callback();
+      return;
+    }
 
     let body = {
       leadId: leadId,
