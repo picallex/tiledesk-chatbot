@@ -9,6 +9,7 @@ const winston = require('../../utils/winston');
 const integrationService = require("../../services/IntegrationService");
 const { Logger } = require("../../Logger");
 const { addBotIdHeader } = require("./BotIdHeader");
+const { fillLeadId } = require("./PicallexLeadId");
 
 const PICALLEX_ENDPOINT = process.env.PICALLEX_ENDPOINT || "https://crm.picallex.com";
 
@@ -77,8 +78,21 @@ class DirPicallexSendTemplate {
     }
 
     // Build request body
-    const leadId = filler.fill("{{attributes.lead.id}}", requestVariables);
+    const leadId = fillLeadId(filler, requestVariables);
     const templateId = filler.fill(action.templateId, requestVariables);
+
+    if (leadId === null) {
+      this.logger.error("[PicallEx SendTemplate] lead id not found in the request context");
+      let errorMsg = "PicallEx SendTemplate Error: lead id is missing or not numeric";
+      await this.#assignAttributes(action, null, errorMsg);
+      if (falseIntent) {
+        await this.#executeCondition(false, trueIntent, trueIntentAttributes, falseIntent, falseIntentAttributes);
+        callback(true);
+        return;
+      }
+      callback();
+      return;
+    }
 
     if (!templateId) {
       this.logger.error("[PicallEx SendTemplate] templateId is required");
