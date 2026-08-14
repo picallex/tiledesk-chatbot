@@ -263,6 +263,35 @@ class FlowExecutionStore {
   }
 
   /**
+   * Operator kill from Picallex (manage). Terminal: the supervisor only
+   * auto-resumes 'waiting', so a cancelled doc never fires again.
+   *
+   * Refuses to overwrite an already-terminal status so a kill racing a
+   * legitimate completion cannot rewrite history. Returns the updated doc,
+   * or null when nothing matched (unknown id, or already terminal).
+   */
+  static async markCancelled(executionId, operator) {
+    const now = new Date();
+    return await FlowExecution.findOneAndUpdate(
+      {
+        execution_id: executionId,
+        status: { $in: ['running', 'waiting', 'paused', 'needs_review'] }
+      },
+      {
+        $set: {
+          status: 'cancelled',
+          cancelled_by: operator || null,
+          cancelled_at: now,
+          'lease.worker_id': null,
+          'lease.until': null,
+          updated_at: now
+        }
+      },
+      { new: true }
+    );
+  }
+
+  /**
    * Recover executions whose lease expired while in supervisor hands
    * (worker crashed mid-resume, or chatbot SIGKILLed mid-process).
    *

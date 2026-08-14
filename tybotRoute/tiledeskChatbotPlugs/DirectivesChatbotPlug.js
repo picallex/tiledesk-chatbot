@@ -606,6 +606,16 @@ class DirectivesChatbotPlug {
         winston.error("(DirectivesChatbotPlug) beginDirective failed (continuing best-effort):", err);
       }
 
+      // Operator kill checkpoint. Every directive boundary re-reads the doc
+      // (beginDirective returns it), so a kill issued from manage stops the
+      // chain here instead of only relabelling the doc. Placed before the
+      // side-effect branch so a cancelled execution never fires the pending
+      // external call.
+      if (this._executionDoc && this._executionDoc.status === 'cancelled') {
+        winston.info(`(DirectivesChatbotPlug) [checkpoint] execution ${this.executionId} cancelled by operator. Exiting chain.`);
+        return this.theend();
+      }
+
       if (isWait) {
         // Stop executing in-process. Supervisor will pick up at deadline.
         winston.info(`(DirectivesChatbotPlug) [checkpoint] WAIT persisted ${timeoutMs}ms. Exiting chain (status=waiting).`);
