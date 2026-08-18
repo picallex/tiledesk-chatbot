@@ -80,18 +80,27 @@ var FlowExecutionSchema = new Schema({
   //                   supervisor only auto-resumes from 'waiting', so a paused
   //                   execution never fires until an operator resumes it
   //                   (flips back to 'waiting' with expected_end_at = now).
+  //   cancelled     — operator killed it from Picallex (manage). Terminal and
+  //                   never auto-resumed. Kept distinct from 'failed' so
+  //                   operator kills don't pollute retry-exhaustion metrics.
+  //                   The engine checks for it on every directive boundary
+  //                   (see DirectivesChatbotPlug), so killing an execution
+  //                   that is genuinely mid-flight stops it at the next step
+  //                   instead of only relabelling the doc.
   status: {
     type: String,
-    enum: ['running', 'waiting', 'completed', 'failed', 'needs_review', 'paused'],
+    enum: ['running', 'waiting', 'completed', 'failed', 'needs_review', 'paused', 'cancelled'],
     default: 'running',
     index: true
   },
 
-  // Operator audit trail for the pause/resume actions (set by tiledesk-server).
+  // Operator audit trail for the pause/resume/kill actions (set by tiledesk-server).
   paused_by: { type: String },
   paused_at: { type: Date },
   resumed_by: { type: String },
   resumed_at: { type: Date },
+  cancelled_by: { type: String },
+  cancelled_at: { type: Date },
 
   // Idempotency log — append-only.
   // idempotency_key is deterministic (execution_id + directive_index +
