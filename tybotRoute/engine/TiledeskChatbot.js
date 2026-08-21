@@ -469,6 +469,11 @@ class TiledeskChatbot {
     const intent_info = {
       intent_name: answerObj.intent_display_name,
       intent_id: answerObj.intent_id,
+      // Nodo del grafo de weflow que generó este intent (lo escribe el export
+      // en attributes.weflowNodeId). Viaja en intent_info para que la traza de
+      // ejecución pueda mapear cada paso al canvas; undefined en bots que no
+      // vienen de weflow. Ver tybotRoute/models/flow_run.js.
+      weflow_node_id: (answerObj.attributes && answerObj.attributes.weflowNodeId) || undefined,
       is_fallback: false,
       confidence: answerObj.score,
       question_payload: question_payload,
