@@ -70,6 +70,7 @@ const logContext = require('../utils/logContext');
 const { DirFlowLog } = require('./directives/DirFlowLog');
 const { DirAddKbContent } = require('./directives/DirAddKbContent');
 const { FlowExecutionStore } = require('../services/FlowExecutionStore');
+const { FlowTraceStore } = require('../services/FlowTraceStore');
 
 /**
  * Per-directive timeout budget for the supervisor's "is it stuck?" check.
@@ -366,6 +367,7 @@ class DirectivesChatbotPlug {
       if (this.checkpointEnabled && this.executionId) {
         await FlowExecutionStore.markCompleted(this.executionId);
       }
+      await this._traceEndRun('completed');
       return this.theend();
     }
     const supportRequest = this.supportRequest;
@@ -447,6 +449,7 @@ class DirectivesChatbotPlug {
           winston.error("(DirectivesChatbotPlug) markCompleted at end-of-chain failed:", err);
         }
       }
+      await this._traceEndRun('completed');
       return this.theend();
     }
 
@@ -473,6 +476,12 @@ class DirectivesChatbotPlug {
         return this.process(next_dir);
       }
     }
+
+    // Traza de ejecución (observabilidad): abre el paso ANTES de resolver el
+    // handler, así una directiva sin handler o saltada por el lock también deja
+    // rastro. Pasa por acá toda directiva, conversacional o de automatización.
+    // Ver models/flow_run.js y external-weflow/docs/monitor-ejecucion.md.
+    const trace = await this._traceBegin(directive, directive_name);
 
     // Mappa semplice directive_name -> classe
     const handlers = {
@@ -547,6 +556,7 @@ class DirectivesChatbotPlug {
 
     const HandlerClass = handlers[directive_name];
     if (!HandlerClass) {
+      await this._traceEnd(trace, { status: 'skipped', result: { no_handler: true } });
       const next_dir = await this.nextDirective(this.directives);
       return this.process(next_dir);
     }
@@ -581,11 +591,15 @@ class DirectivesChatbotPlug {
       // Mongo. This makes Redis a pure cache: on resume the supervisor
       // rehydrates these into Redis, so the flow survives even a full
       // Redis wipe (not just a chatbot restart).
-      let liveParams = undefined;
-      try {
-        liveParams = await this.chatbot.allParameters();
-      } catch (err) {
-        winston.error("(DirectivesChatbotPlug) reading params for snapshot failed:", err);
+      // La traza ya leyó los params de Redis para este mismo paso: reusamos su
+      // snapshot para no hacer dos lecturas por directiva.
+      let liveParams = trace ? trace.params : undefined;
+      if (liveParams === undefined) {
+        try {
+          liveParams = await this.chatbot.allParameters();
+        } catch (err) {
+          winston.error("(DirectivesChatbotPlug) reading params for snapshot failed:", err);
+        }
       }
 
       // Persist `current` (start time + deadline) + params snapshot. For
@@ -613,12 +627,15 @@ class DirectivesChatbotPlug {
       // external call.
       if (this._executionDoc && this._executionDoc.status === 'cancelled') {
         winston.info(`(DirectivesChatbotPlug) [checkpoint] execution ${this.executionId} cancelled by operator. Exiting chain.`);
+        await this._traceEnd(trace, { status: 'skipped', result: { cancelled_by_operator: true } });
+        await this._traceEndRun('cancelled');
         return this.theend();
       }
 
       if (isWait) {
         // Stop executing in-process. Supervisor will pick up at deadline.
         winston.info(`(DirectivesChatbotPlug) [checkpoint] WAIT persisted ${timeoutMs}ms. Exiting chain (status=waiting).`);
+        await this._traceEnd(trace, { status: 'waiting', result: { wait_ms: timeoutMs } });
         return this.theend();
       }
 
@@ -627,12 +644,17 @@ class DirectivesChatbotPlug {
         const prior = FlowExecutionStore.findSideEffect(this._executionDoc, key);
         if (prior) {
           winston.info(`(DirectivesChatbotPlug) [checkpoint] side-effect ${directive_name} already done (key=${key}); skipping`);
+          await this._traceEnd(trace, {
+            status: 'skipped',
+            result: { idempotency_key: key, prior_result: prior.result }
+          });
           const next_dir = await this.nextDirective(this.directives);
           return this.process(next_dir);
         }
         // Execute and, on success, append marker.
         const startedAt = Date.now();
         return handler.execute(directive, async (stop) => {
+          await this._traceEnd(trace, { status: 'ok', result: { stopped: !!stop } });
           try {
             await FlowExecutionStore.appendSideEffect(this.executionId, {
               idempotencyKey: key,
@@ -655,8 +677,10 @@ class DirectivesChatbotPlug {
 
       // Pure / internal directive — run normally; advance current on completion.
       return handler.execute(directive, async (stop) => {
+        await this._traceEnd(trace, { status: 'ok', result: { stopped: !!stop } });
         if (stop) {
           await FlowExecutionStore.markCompleted(this.executionId);
+          await this._traceEndRun('completed');
           return this.theend();
         }
         const next_dir = await this.nextDirective(this.directives);
@@ -669,14 +693,111 @@ class DirectivesChatbotPlug {
     // disabled go through here. Unchanged behaviour.
     // -------------------------------------------------------------------
     handler.execute(directive, async (stop) => {
+      await this._traceEnd(trace, { status: 'ok', result: { stopped: !!stop } });
       if (stop) {
         winston.debug(`(DirectivesChatbotPlug) Stopping Actions on:`, directive);
+        await this._traceEndRun('completed');
         return this.theend();
       }
       const next_dir = await this.nextDirective(this.directives);
       let process_next_dir = await this.process(next_dir);
       return process_next_dir;
     });
+  }
+
+  /**
+   * Abre un paso en la traza de ejecución y devuelve lo necesario para
+   * cerrarlo, o null si la traza está apagada o esta corrida no cayó en el
+   * muestreo. Todo es best-effort: nunca corta el flujo.
+   */
+  async _traceBegin(directive, directive_name) {
+    const requestId = this.supportRequest && this.supportRequest.request_id;
+    if (!FlowTraceStore.shouldTrace(requestId)) {
+      return null;
+    }
+    let params;
+    try {
+      params = (this.chatbot && this.chatbot.allParameters)
+        ? await this.chatbot.allParameters()
+        : undefined;
+    } catch (err) {
+      winston.error("(DirectivesChatbotPlug) [trace] reading params failed:", err);
+    }
+    const intentInfo = (this.context && this.context.reply && this.context.reply.attributes)
+      ? this.context.reply.attributes.intent_info
+      : null;
+    const seq = await FlowTraceStore.beginStep(
+      {
+        requestId: requestId,
+        projectId: this.supportRequest.id_project,
+        botId: this._traceBotId(),
+        executionId: this.executionId
+      },
+      {
+        directiveName: directive_name,
+        directiveIndex: this.curr_directive_index,
+        actionId: directive.action ? directive.action["_tdActionId"] : undefined,
+        intentId: intentInfo ? intentInfo.intent_id : undefined,
+        intentName: intentInfo ? intentInfo.intent_name : undefined,
+        // El export de weflow todavía no emite el id del nodo (fase 4 del
+        // spec); hasta entonces el monitor mapea por intent.
+        nodeId: intentInfo ? intentInfo.weflow_node_id : undefined,
+        directive: directive,
+        params: params
+      }
+    );
+    return seq === null ? null : { seq: seq, requestId: requestId, startedAt: Date.now(), params: params };
+  }
+
+  /**
+   * Bot al que se le atribuye la corrida en la traza. `participantsBots` es la
+   * fuente autoritativa en una conversación (es lo que tiledesk tiene en la
+   * request); `bot_id` cubre las automatizaciones, donde el supportRequest es
+   * sintético. El fallback a `chatbot.botId` queda al final porque en el camino
+   * conversacional (/ext) el plug se construye SIN chatbot, y usar el id del
+   * URL atribuía la corrida al bot equivocado — el monitor del flujo quedaba
+   * vacío aunque la conversación fuera suya.
+   */
+  _traceBotId() {
+    const sr = this.supportRequest || {};
+    if (Array.isArray(sr.participantsBots) && sr.participantsBots.length > 0) {
+      return String(sr.participantsBots[0]);
+    }
+    return sr.bot_id || (this.chatbot && this.chatbot.botId);
+  }
+
+  /**
+   * Cierra el paso. Relee los parámetros para que el monitor muestre qué mutó
+   * la directiva (un setattribute o la respuesta de un webhook).
+   */
+  async _traceEnd(trace, outcome) {
+    if (!trace) {
+      return;
+    }
+    let paramsAfter;
+    try {
+      paramsAfter = (this.chatbot && this.chatbot.allParameters)
+        ? await this.chatbot.allParameters()
+        : undefined;
+    } catch (err) {
+      winston.error("(DirectivesChatbotPlug) [trace] reading params after step failed:", err);
+    }
+    await FlowTraceStore.endStep(trace.requestId, trace.seq, {
+      status: outcome.status,
+      result: outcome.result,
+      error: outcome.error,
+      durationMs: Date.now() - trace.startedAt,
+      paramsAfter: paramsAfter
+    });
+  }
+
+  /** Cierra la corrida en la traza (fin de cadena, kill del operador). */
+  async _traceEndRun(status, error) {
+    const requestId = this.supportRequest && this.supportRequest.request_id;
+    if (!FlowTraceStore.shouldTrace(requestId)) {
+      return;
+    }
+    await FlowTraceStore.endRun(requestId, status, error);
   }
 
   /**

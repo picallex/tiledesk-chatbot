@@ -21,6 +21,16 @@ class DirClose {
     
     execute(directive, callback) {
         winston.verbose("Execute Close directive");
+        // Una automatización no tiene conversación que cerrar: su request_id es
+        // sintético (`automation-request-…`) y no existe como request en
+        // tiledesk. Pedir el cierre sólo dejaba un error por corrida en el log
+        // del server (y, mientras esa ruta no contestaba, colgaba la cadena).
+        // Misma convención de prefijo que ya usa Logger.base.
+        if (String(this.requestId || '').startsWith('automation-request-')) {
+            winston.verbose("(DirClose) automation: no conversation to close");
+            callback();
+            return;
+        }
         this.tdClient.closeRequest(this.requestId, async (err) => {
             if (err) {
                 this.logger.error("[Close] Closing request");

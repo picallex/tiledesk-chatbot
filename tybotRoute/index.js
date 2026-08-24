@@ -39,6 +39,7 @@ const { TiledeskChatbotUtil } = require('./utils/TiledeskChatbotUtil.js'); //req
 const AiService = require('./services/AIService.js');
 const tilebotService = require('./services/TilebotService.js');
 const { FlowExecutionSupervisor } = require('./services/FlowExecutionSupervisor.js');
+const { FlowTraceStore } = require('./services/FlowTraceStore.js');
 
 let API_ENDPOINT = null;
 let TILEBOT_ENDPOINT = null;
@@ -879,6 +880,9 @@ async function startApp(settings, completionCallback) {
       else {
         winston.info("(Tilebot) MongoDB Connected");
         await connectRedis();
+        // La conexión abre con autoIndex:false, así que los índices de la traza
+        // (incluido el TTL) hay que crearlos a mano.
+        await FlowTraceStore.ensureIndexes();
         startFlowSupervisor();
         winston.info("(Tilebot) Tilebot started");
 
