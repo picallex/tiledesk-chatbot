@@ -190,7 +190,20 @@ class DirPicallexCheckStopPolicies {
       let resultData = res.data ? res.data : null;
       await this.#assignAttributes(action, res.status, null, resultData);
 
-      winston.info("(DirPicallexCheckStopPolicies) dispatching trueIntent=" + trueIntent);
+      // El backend contesta 200 tambien cuando la cadencia debe cortarse: el corte
+      // viaja en el body (`mustStop`), no en el status. Ramificar solo por status
+      // hacia trueIntent dejaba el bloque decorativo, seguia al envio siempre.
+      const mustStop = resultData?.mustStop === true;
+
+      if (mustStop) {
+        this.logger.native("[PicallEx CheckStopPolicies] Stopped by " + (resultData?.stoppedBy || "stop policy"));
+        winston.info("(DirPicallexCheckStopPolicies) mustStop=true dispatching falseIntent=" + falseIntent);
+        await this.#executeCondition(false, trueIntent, trueIntentAttributes, falseIntent, falseIntentAttributes);
+        callback(true);
+        return;
+      }
+
+      winston.info("(DirPicallexCheckStopPolicies) mustStop=false dispatching trueIntent=" + trueIntent);
       if (trueIntent) {
         await this.#executeCondition(true, trueIntent, trueIntentAttributes, falseIntent, falseIntentAttributes);
         callback(true);
