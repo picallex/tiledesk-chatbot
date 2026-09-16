@@ -216,6 +216,17 @@ class DirPicallexCallLead {
       let resultData = res.data ? res.data : null;
       await this.#assignAttributes(action, res.status, null, resultData);
 
+      // `mustStop` en el body (con status 200): una stop policy corto la cadencia
+      // y el backend NO hizo la llamada. Termina el flujo sin despachar ningun intent:
+      // trueIntent significa "la llamada salio", y falseIntent es la rama de error que
+      // arma el autor del flujo — este caso no es ninguno de los dos.
+      if (resultData?.mustStop === true) {
+        this.logger.native("[PicallEx CallLead] Stopped by " + (resultData?.stoppedBy || "stop policy"));
+        winston.info("(DirPicallexCallLead) mustStop=true, ending flow");
+        callback(true);
+        return;
+      }
+
       if (trueIntent) {
         await this.#executeCondition(true, trueIntent, trueIntentAttributes, falseIntent, falseIntentAttributes);
         callback(true);
