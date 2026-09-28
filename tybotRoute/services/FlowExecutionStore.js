@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const FlowExecution = require('../models/flow_execution');
 const winston = require('../utils/winston');
+const picallexCadenceNotifier = require('./PicallexCadenceNotifier');
 
 /**
  * FlowExecutionStore — encapsulates Mongo operations on flow_executions.
@@ -227,8 +228,16 @@ class FlowExecutionStore {
     );
   }
 
+  /**
+   * Se usa findOneAndUpdate en vez de updateOne para quedarse con el doc ya
+   * actualizado: el aviso al CRM necesita project_id, token y el lead del
+   * snapshot, y traerlos en el mismo roundtrip evita una segunda consulta.
+   *
+   * El aviso va despues del $set y con su propio catch: si el CRM esta caido,
+   * la cadencia igual queda marcada como completada en Mongo.
+   */
   static async markCompleted(executionId) {
-    return await FlowExecution.updateOne(
+    const execution = await FlowExecution.findOneAndUpdate(
       { execution_id: executionId },
       {
         $set: {
@@ -238,8 +247,19 @@ class FlowExecutionStore {
           'lease.until': null,
           updated_at: new Date()
         }
-      }
+      },
+      { new: true }
     );
+
+    if (execution) {
+      try {
+        await picallexCadenceNotifier.notifyCompleted(execution);
+      } catch (err) {
+        winston.error("(FlowExecutionStore) PicallEx cadence-completed notify failed:", err && err.message);
+      }
+    }
+
+    return execution;
   }
 
   /**
