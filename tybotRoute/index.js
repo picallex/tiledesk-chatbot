@@ -40,6 +40,7 @@ const AiService = require('./services/AIService.js');
 const tilebotService = require('./services/TilebotService.js');
 const { FlowExecutionSupervisor } = require('./services/FlowExecutionSupervisor.js');
 const { FlowTraceStore } = require('./services/FlowTraceStore.js');
+const { FlowExecutionStore } = require('./services/FlowExecutionStore.js');
 
 let API_ENDPOINT = null;
 let TILEBOT_ENDPOINT = null;
@@ -883,6 +884,7 @@ async function startApp(settings, completionCallback) {
         // La conexión abre con autoIndex:false, así que los índices de la traza
         // (incluido el TTL) hay que crearlos a mano.
         await FlowTraceStore.ensureIndexes();
+        await FlowExecutionStore.ensureIndexes();
         startFlowSupervisor();
         winston.info("(Tilebot) Tilebot started");
 

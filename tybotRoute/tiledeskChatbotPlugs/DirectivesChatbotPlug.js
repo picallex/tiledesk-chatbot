@@ -305,12 +305,16 @@ class DirectivesChatbotPlug {
     let startFromIndex = 0;
     if (this.checkpointEnabled && this.executionId) {
       try {
-        let { doc, created } = await FlowExecutionStore.getOrCreate({
+        const preLeadId = this.message && this.message.attributes
+          && this.message.attributes.preLead && this.message.attributes.preLead.id;
+
+        let { doc, created, blockedBy } = await FlowExecutionStore.getOrCreate({
           executionId: this.executionId,
           requestId: supportRequest.request_id,
           botId: supportRequest.bot_id || (this.chatbot && this.chatbot.botId),
           projectId: projectId,
           token: token,
+          preLeadId: preLeadId,
           trigger: {
             block_id: this.message && this.message.attributes && this.message.attributes.payload
               ? this.message.attributes.payload.block_id : null,
@@ -324,6 +328,13 @@ class DirectivesChatbotPlug {
             parameters: {}
           }
         });
+
+        // El pre-lead ya tiene una cadencia viva: no se arranca esta. No es un
+        // error, es la regla de una cadencia por contacto.
+        if (blockedBy) {
+          await this._traceEndRun('cancelled');
+          return this.theend();
+        }
 
         if (!created) {
           doc = await FlowExecutionStore.archiveAndStartNewChain(this.executionId, {
