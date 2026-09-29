@@ -34,6 +34,12 @@ var FlowExecutionSchema = new Schema({
   execution_id: { type: String, required: true, unique: true, index: true },
   request_id: { type: String, required: true, index: true },
   bot_id: { type: String, required: true, index: true },
+
+  // Pre-lead que disparó la automatización, cuando PicallEx lo manda en el payload.
+  // Un pre-lead es un contacto de WhatsApp y puede tener varios leads colgados, uno
+  // por producto: sin esto los leads hermanos son indistinguibles y cada uno arranca
+  // su propia cadencia sobre la misma conversación.
+  pre_lead_id: { type: String, index: true },
   project_id: { type: String, required: true, index: true },
   token: { type: String, required: true },
 
@@ -174,6 +180,8 @@ var FlowExecutionSchema = new Schema({
 
 // Compound index for the supervisor poll query — the hot path.
 FlowExecutionSchema.index({ status: 1, 'current.expected_end_at': 1 });
+// Sirve la pregunta "¿este pre-lead ya tiene una cadencia viva?" en getOrCreate.
+FlowExecutionSchema.index({ pre_lead_id: 1, status: 1 });
 
 // Side-effect lookup must be cheap; idempotency_key is in an embedded array.
 // Mongo can hit a multikey index on the array's nested field.

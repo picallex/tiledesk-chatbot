@@ -48,17 +48,47 @@ class FlowExecutionStore {
    * untouched — that means we're being re-dispatched (e.g. the worker
    * resuming, or PHP retrying the trigger) and the in-progress state wins.
    */
-  static async getOrCreate({ executionId, requestId, botId, projectId, token, trigger, snapshot }) {
+  /**
+   * Una cadencia por pre-lead. Un pre-lead es un contacto de WhatsApp y puede
+   * tener varios leads colgados, uno por producto; sin este chequeo cada lead
+   * arranca su propia cadencia y al mismo teléfono le llegan varios seguimientos
+   * casi idénticos el mismo día.
+   *
+   * Se pregunta acá, contra `flow_executions`, porque es el único lugar donde vive
+   * el estado real de una corrida. Devuelve la ejecución viva que bloquea, o null.
+   */
+  static async liveExecutionForPreLead(projectId, preLeadId) {
+    if (!preLeadId) {
+      return null;
+    }
+    return await FlowExecution.findOne({
+      project_id: projectId,
+      pre_lead_id: String(preLeadId),
+      status: { $in: ['running', 'waiting', 'paused'] }
+    }).select({ execution_id: 1, status: 1 });
+  }
+
+  static async getOrCreate({ executionId, requestId, botId, projectId, token, trigger, snapshot, preLeadId }) {
     const existing = await FlowExecution.findOne({ execution_id: executionId });
     if (existing) {
       return { doc: existing, created: false };
     }
+
+    const live = await this.liveExecutionForPreLead(projectId, preLeadId);
+    if (live) {
+      winston.info(
+        `(FlowExecutionStore) pre-lead ${preLeadId} already has a live cadence (${live.execution_id}, ${live.status}); not starting ${executionId}`
+      );
+      return { doc: null, created: false, blockedBy: live.execution_id };
+    }
+
     try {
       const doc = await FlowExecution.create({
         execution_id: executionId,
         request_id: requestId,
         bot_id: botId,
         project_id: projectId,
+        pre_lead_id: preLeadId ? String(preLeadId) : undefined,
         token: token,
         trigger: trigger || {},
         snapshot: snapshot,
