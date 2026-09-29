@@ -257,6 +257,22 @@ class FlowExecutionStore {
     );
   }
 
+  /**
+   * Crea los índices a mano: la conexión abre con autoIndex:false, así que sin
+   * esto `liveExecutionForPreLead` haría un scan por cada disparo.
+   *
+   * `background: true` para no bloquear la colección: en producción ya tiene
+   * volumen y el arranque no puede quedarse esperando la construcción.
+   */
+  static async ensureIndexes() {
+    try {
+      await FlowExecution.createIndexes({ background: true });
+      winston.info("(FlowExecutionStore) indexes ensured on flow_executions");
+    } catch (err) {
+      winston.error("(FlowExecutionStore) ensureIndexes failed:", err);
+    }
+  }
+
   static async markCompleted(executionId) {
     return await FlowExecution.updateOne(
       { execution_id: executionId },
