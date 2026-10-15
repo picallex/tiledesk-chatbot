@@ -182,6 +182,12 @@ var FlowExecutionSchema = new Schema({
 FlowExecutionSchema.index({ status: 1, 'current.expected_end_at': 1 });
 // Sirve la pregunta "¿este pre-lead ya tiene una cadencia viva?" en getOrCreate.
 FlowExecutionSchema.index({ pre_lead_id: 1, status: 1 });
+// Limpieza de Redis y purga del supervisor. Sin él, ambas pasadas recorren todos
+// los completed (en prod ~146k docs de ~44 KB cada 10 s) para encontrar unos pocos.
+FlowExecutionSchema.index(
+  { status: 1, redis_cleaned_at: 1, completed_at: 1 },
+  { name: 'status_cleaned_completed' }
+);
 
 // Side-effect lookup must be cheap; idempotency_key is in an embedded array.
 // Mongo can hit a multikey index on the array's nested field.
