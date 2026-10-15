@@ -949,13 +949,20 @@ function startFlowSupervisor() {
     winston.warn("(Tilebot) FLOW_REDIS_CLEANUP_ENABLED=true but no Redis client; cleanup disabled");
   }
 
+  const purgeEnabled = process.env.FLOW_EXECUTION_PURGE_ENABLED !== 'false';
+  const retentionDays = parseInt(process.env.FLOW_EXECUTION_RETENTION_DAYS, 10) || 30;
+  const purgeBatchSize = parseInt(process.env.FLOW_EXECUTION_PURGE_BATCH_SIZE, 10) || 500;
+
   flowSupervisor = new FlowExecutionSupervisor({
     resumeFn: resumeFlowExecution,
     intervalMs, leaseTtlMs, batchSize, maxAttempts, resumeTimeoutMs,
     redisClient,
     cleanupEnabled,
     cleanupDelayMs,
-    cleanupBatchSize
+    cleanupBatchSize,
+    purgeEnabled,
+    retentionDays,
+    purgeBatchSize
   });
   flowSupervisor.start();
 }

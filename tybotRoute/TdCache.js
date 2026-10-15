@@ -1,6 +1,10 @@
 const redis = require('redis');
 const winston = require('./utils/winston');
 
+// Mismo límite que una automatización (30 días). Se renueva en cada escritura,
+// así que solo vence lo que lleva 30 días sin actividad.
+const REQUEST_KEYS_TTL_SECONDS = 30 * 24 * 60 * 60;
+
 class TdCache {
 
     constructor(config) {
@@ -74,22 +78,29 @@ class TdCache {
         options);
     }
 
-    async incr(key) {
-      await this.client.incr(key);
+    async incr(key, options) {
+      if (!options) {
+        options = {EX: REQUEST_KEYS_TTL_SECONDS}
+      }
+      await this.client.multi()
+        .INCR(key)
+        .EXPIRE(key, options.EX)
+        .exec();
     }
 
+    // HSET no acepta expiración (el {EX} se ignoraba y los hashes :parameters
+    // no vencían nunca): el TTL va en un EXPIRE aparte, en la misma transacción.
     async hset(dict_key, key, value, options) {
       if (!value) {
         return;
       }
       if (!options) {
-        options = {EX: 86400}
+        options = {EX: REQUEST_KEYS_TTL_SECONDS}
       }
-      await this.client.HSET(
-        dict_key,
-        key,
-        value,
-        options);
+      await this.client.multi()
+        .HSET(dict_key, key, value)
+        .EXPIRE(dict_key, options.EX)
+        .exec();
     }
 
     async hdel(dict_key, key) {
@@ -174,4 +185,4 @@ class TdCache {
     // }
 }
 
-module.exports = { TdCache };
+module.exports = { TdCache, REQUEST_KEYS_TTL_SECONDS };

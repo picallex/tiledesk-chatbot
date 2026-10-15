@@ -29,7 +29,7 @@ const winston = require('../utils/winston');
  * circular imports with the engine.)
  */
 class FlowExecutionSupervisor {
-  constructor({ resumeFn, intervalMs, leaseTtlMs, batchSize, maxAttempts, resumeTimeoutMs, redisClient, cleanupEnabled, cleanupDelayMs, cleanupBatchSize }) {
+  constructor({ resumeFn, intervalMs, leaseTtlMs, batchSize, maxAttempts, resumeTimeoutMs, redisClient, cleanupEnabled, cleanupDelayMs, cleanupBatchSize, purgeEnabled, retentionDays, purgeBatchSize }) {
     if (typeof resumeFn !== 'function') {
       throw new Error('FlowExecutionSupervisor: resumeFn(doc) is required');
     }
@@ -63,6 +63,12 @@ class FlowExecutionSupervisor {
     this.cleanupEnabled = cleanupEnabled !== false && !!this.redisClient;
     this.cleanupDelayMs = cleanupDelayMs || 600_000;   // 10 min
     this.cleanupBatchSize = cleanupBatchSize || 50;
+
+    // Las automatizaciones duran como máximo 30 días: pasado ese plazo, una
+    // completada ya no puede volver a usarse. Un lote por tick acota la carga.
+    this.purgeEnabled = purgeEnabled !== false;
+    this.retentionDays = retentionDays || 30;
+    this.purgeBatchSize = purgeBatchSize || 500;
   }
 
   start() {
@@ -109,6 +115,9 @@ class FlowExecutionSupervisor {
       if (this.cleanupEnabled && !this.shutdownRequested) {
         await this._cleanupCompleted();
       }
+      if (this.purgeEnabled && !this.shutdownRequested) {
+        await this._purgeExpired();
+      }
     } finally {
       this.running = false;
     }
@@ -123,9 +132,8 @@ class FlowExecutionSupervisor {
    * Failed / needs_review executions are NOT cleaned up here so operators
    * can still inspect the Redis state during troubleshooting.
    *
-   * The Mongo doc itself is never deleted — it's the audit trail. Only
-   * Redis keys are reclaimed, which is where the bulk of the long-term
-   * disk growth lives (especially the :parameters hash).
+   * The Mongo doc is kept as the audit trail until `_purgeExpired` drops
+   * it after the retention period.
    */
   async _cleanupCompleted() {
     let cleaned = 0;
@@ -156,6 +164,20 @@ class FlowExecutionSupervisor {
       }
     } catch (err) {
       winston.error('(FlowExecutionSupervisor) cleanup pass error:', err);
+    }
+  }
+
+  async _purgeExpired() {
+    try {
+      const deleted = await FlowExecutionStore.purgeExpiredCompleted({
+        retentionDays: this.retentionDays,
+        limit: this.purgeBatchSize
+      });
+      if (deleted > 0) {
+        winston.info(`(FlowExecutionSupervisor) purge pass deleted ${deleted} completed executions older than ${this.retentionDays} days`);
+      }
+    } catch (err) {
+      winston.error('(FlowExecutionSupervisor) purge pass error:', err);
     }
   }
 

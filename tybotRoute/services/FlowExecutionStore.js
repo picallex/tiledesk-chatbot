@@ -2,6 +2,8 @@ const crypto = require('crypto');
 const FlowExecution = require('../models/flow_execution');
 const winston = require('../utils/winston');
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 /**
  * FlowExecutionStore — encapsulates Mongo operations on flow_executions.
  *
@@ -481,6 +483,28 @@ class FlowExecutionStore {
       { execution_id: executionId },
       { $set: { redis_cleaned_at: new Date() } }
     );
+  }
+
+  /**
+   * Borra un lote de ejecuciones completadas hace más de `retentionDays`, con
+   * Redis ya limpio. Cualquier otro estado (running, waiting, paused, failed,
+   * needs_review, cancelled) no se toca nunca.
+   *
+   * El filtro se repite en el deleteMany: si entre el find y el delete una
+   * ejecución arranca una cadena nueva (archiveAndStartNewChain la pasa a
+   * running), queda afuera del borrado.
+   */
+  static async purgeExpiredCompleted({ retentionDays, limit }) {
+    const filter = {
+      status: 'completed',
+      redis_cleaned_at: { $ne: null },
+      completed_at: { $lt: new Date(Date.now() - retentionDays * DAY_MS) }
+    };
+    const docs = await FlowExecution.find(filter, { _id: 1 }).limit(limit).lean();
+    if (!docs.length) return 0;
+
+    const result = await FlowExecution.deleteMany({ ...filter, _id: { $in: docs.map(doc => doc._id) } });
+    return result.deletedCount || 0;
   }
 
   /**
