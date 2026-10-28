@@ -7,7 +7,7 @@ if (process.env.OTEL_EXPORTER_OTLP_ENDPOINT) {
     const { getNodeAutoInstrumentations, getResourceDetectors } = require('@opentelemetry/auto-instrumentations-node');
     const instrumentations = getNodeAutoInstrumentations({
       // http.route se fija antes de descartar la capa: la transacción conserva el nombre de la ruta.
-      '@opentelemetry/instrumentation-express': { ignoreLayersType: ['middleware', 'request_handler'] },
+      '@opentelemetry/instrumentation-express': { ignoreLayersType: ['middleware', 'request_handler', 'router'] },
     });
     new NodeSDK({ instrumentations, resourceDetectors: getResourceDetectors() }).start();
   } catch (err) {
