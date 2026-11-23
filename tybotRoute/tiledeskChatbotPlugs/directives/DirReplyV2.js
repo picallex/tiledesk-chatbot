@@ -86,28 +86,7 @@ class DirReplyV2 {
           if (locked) { // fist execution returns (just) locked
             must_stop = true; // you must stop after next callbacks (in this flow) if there are buttons
             if (action.noInputIntent) {
-              const noInputIntent = action.noInputIntent;
-              const noInputTimeout = action.noInputTimeout;
-              if (noInputTimeout > 0 && noInputTimeout < 7776000) {
-                const timeout_id = uuidv4();
-                await this.chatbot.addParameter(TiledeskChatbotConst.USER_INPUT, timeout_id); // control variable. On each user input is removed
-                setTimeout(async () => {
-                  winston.debug("(DirReplyV2) noinput timeout triggered!");
-                  const userInput = await this.chatbot.getParameter(TiledeskChatbotConst.USER_INPUT);
-                  if (userInput && userInput === timeout_id) {
-                    await this.chatbot.unlockIntent(this.requestId);
-                    await this.chatbot.unlockAction(this.requestId);
-                    winston.debug("(DirReplyV2) Unlocked (for noInput) ReplyV2");
-                    let noinput_action = DirIntent.intentDirectiveFor(noInputIntent, null);
-                    this.intentDir.execute(noinput_action, () => {
-                      winston.debug("(DirReplyV2) noinput action invoked", noinput_action);
-                    });
-                  }
-                  else {
-                    winston.debug("(DirReplyV2) Skipping noinput action because of userInput", userInput);
-                  }
-                }, noInputTimeout);
-              }
+              await this.armNoInputTimer(action);
             }
           }
           else { // second execution
@@ -167,6 +146,10 @@ class DirReplyV2 {
               }
             }
           }
+        }
+        else if (action.noInputIntent && action.noInputWithoutButtons === true) {
+          // Free text: there is nothing to lock, only the inactivity timer is armed.
+          await this.armNoInputTimer(action);
         }
       }
       catch(error) {
@@ -270,6 +253,37 @@ class DirReplyV2 {
 
   }
 
+
+  /**
+   * Arms the "no input" timer: if the user writes nothing before it fires, the flow jumps to
+   * action.noInputIntent. Any user message removes USER_INPUT (TiledeskChatbotUtil), which
+   * cancels the pending timer. The timer lives in process memory: a restart loses it.
+   */
+  async armNoInputTimer(action) {
+    const noInputIntent = action.noInputIntent;
+    const noInputTimeout = action.noInputTimeout;
+    if (!(noInputTimeout > 0 && noInputTimeout < 7776000)) {
+      return;
+    }
+    const timeout_id = uuidv4();
+    await this.chatbot.addParameter(TiledeskChatbotConst.USER_INPUT, timeout_id); // control variable. On each user input is removed
+    setTimeout(async () => {
+      winston.debug("(DirReplyV2) noinput timeout triggered!");
+      const userInput = await this.chatbot.getParameter(TiledeskChatbotConst.USER_INPUT);
+      if (userInput && userInput === timeout_id) {
+        await this.chatbot.unlockIntent(this.requestId);
+        await this.chatbot.unlockAction(this.requestId);
+        winston.debug("(DirReplyV2) Unlocked (for noInput) ReplyV2");
+        let noinput_action = DirIntent.intentDirectiveFor(noInputIntent, null);
+        this.intentDir.execute(noinput_action, () => {
+          winston.debug("(DirReplyV2) noinput action invoked", noinput_action);
+        });
+      }
+      else {
+        winston.debug("(DirReplyV2) Skipping noinput action because of userInput", userInput);
+      }
+    }, noInputTimeout);
+  }
 
   async lockUnlock(action, callback) {
     let lockedAction = await this.chatbot.currentLockedAction(this.requestId);
